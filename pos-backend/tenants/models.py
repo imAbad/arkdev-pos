@@ -1,5 +1,8 @@
+import secrets
+
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.utils import timezone
 
 from core.models import BaseTenantModel, TimeStampedModel
 from tenants.managers import UserManager
@@ -99,3 +102,48 @@ class UserProfile(BaseTenantModel):
 
     def __str__(self):
         return f'{self.user.email} @ {self.branch.name}'
+
+
+class SupervisorAuthorization(BaseTenantModel):
+    """PIN/reautenticación para `can_authorize_exceptions` (punto 6 del
+    orden de construcción — pos_especificacion_funcional.md §2/§13):
+    descuentos fuera de política, cancelaciones, devoluciones.
+
+    Mecanismo elegido: endpoint separado que valida credenciales del
+    supervisor (email+password, mismo mecanismo de auth que ya existe) SIN
+    tocar la sesión del cajero actual, y emite un token corto de un solo
+    uso. `tenants.services.request_supervisor_authorization` lo emite;
+    `consume_supervisor_authorization` lo consume. Ningún endpoint de
+    acción sensible (cancelar venta, aplicar descuento) existe todavía —
+    esta es la pieza genérica de autorización, reutilizable cuando esos
+    endpoints se construyan.
+    """
+
+    token = models.CharField(max_length=64, unique=True, editable=False)
+    supervisor = models.ForeignKey(
+        'tenants.User', on_delete=models.PROTECT, related_name='granted_authorizations',
+    )
+    requested_by = models.ForeignKey(
+        'tenants.User', on_delete=models.PROTECT, related_name='requested_authorizations',
+    )
+    reason = models.CharField(max_length=200, blank=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    def save(self, *args, **kwargs):
+        if not self.token:
+            self.token = secrets.token_urlsafe(32)
+        if not self.company_id:
+            self.company_id = self.requested_by.profile.company_id
+        super().save(*args, **kwargs)
+
+    @property
+    def is_expired(self):
+        return timezone.now() >= self.expires_at
+
+    @property
+    def is_used(self):
+        return self.used_at is not None
+
+    def __str__(self):
+        return f'Autorización {self.supervisor.email} -> {self.requested_by.email}'

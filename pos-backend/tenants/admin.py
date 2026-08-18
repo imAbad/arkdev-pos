@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 
-from tenants.models import Branch, Company, CompanySettings, User, UserProfile
+from tenants.models import Branch, Company, CompanySettings, SupervisorAuthorization, User, UserProfile
 
 
 @admin.register(User)
@@ -23,3 +23,15 @@ admin.site.register(Company)
 admin.site.register(Branch)
 admin.site.register(CompanySettings)
 admin.site.register(UserProfile)
+
+
+@admin.register(SupervisorAuthorization)
+class SupervisorAuthorizationAdmin(admin.ModelAdmin):
+    list_display = ('supervisor', 'requested_by', 'reason', 'expires_at', 'used_at')
+    readonly_fields = [f.name for f in SupervisorAuthorization._meta.fields]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False

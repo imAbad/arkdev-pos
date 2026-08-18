@@ -125,3 +125,8 @@ SIMPLE_JWT = {
     # así no rompe entornos que todavía no lo configuraron.
     'SIGNING_KEY': config('JWT_SIGNING_KEY', default=SECRET_KEY),
 }
+
+# Vida del token de autorización de supervisor (PIN/reautenticación para
+# can_authorize_exceptions, punto 6 del orden de construcción) — corto a
+# propósito: es para autorizar una acción puntual, no una sesión.
+SUPERVISOR_AUTHORIZATION_TTL_MINUTES = config('SUPERVISOR_AUTHORIZATION_TTL_MINUTES', default=5, cast=int)
