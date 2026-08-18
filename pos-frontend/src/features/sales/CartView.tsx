@@ -40,8 +40,17 @@ export function CartView({ lines, onChangeQuantity, onRemove }: CartViewProps) {
                 step={step}
                 value={line.quantity}
                 onChange={(event) => {
+                  // Sin bloquear en 0/vacío mientras se escribe: si el
+                  // input se queda en 0 o vacío al perder el foco (onBlur),
+                  // ahí sí se corrige a 1 — bloquearlo aquí (value > 0)
+                  // rompía el gesto normal de "borrar y volver a escribir"
+                  // (el input quedaba pegado en el valor anterior).
+                  const raw = event.target.value
+                  onChangeQuantity(line.product.id, raw === '' ? 0 : Number(raw))
+                }}
+                onBlur={(event) => {
                   const value = Number(event.target.value)
-                  if (value > 0) onChangeQuantity(line.product.id, value)
+                  if (!(value > 0)) onChangeQuantity(line.product.id, 1)
                 }}
                 className="h-14 w-24 rounded-xl border-2 border-border text-center text-xl text-ink"
               />
