@@ -33,6 +33,9 @@ Vamos a lanzar un POS SaaS multi-tenant (abarrotera/papelería como primer clien
 | **Application Insights** | Monitoreo/logs — capa gratuita cubre este volumen sin problema |
 | **Azure Blob Storage** | Backups adicionales / tickets PDF generados |
 | **Azure Cost Management + Budgets** | Alertas de presupuesto — ver sección 6, esto es importante para no llevarnos sorpresas |
+| **Correo transaccional** (Azure Communication Services Email, SendGrid, o cualquier SMTP) | Ticket de venta por correo y resumen diario de stock bajo — ver nota abajo |
+
+**Correo transaccional — sin proveedor decidido todavía.** El backend ya manda correos reales (ticket de venta a pedido del cajero, resumen diario de stock bajo — ver sección 7 para el mecanismo de ese segundo). En dev, sin credenciales configuradas, cae al backend de consola de Django (el correo se ve en los logs, no se envía de verdad) — funciona sin nada que configurar. En producción SÍ necesita variables de entorno reales: `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS`, `DEFAULT_FROM_EMAIL` (ver `pos-backend/.env.example`) — estas SÍ deben vivir en Key Vault, no en variables planas del App Service, mismo criterio que el resto de credenciales. Cualquier proveedor SMTP real sirve; no hay decisión tomada sobre cuál todavía, es una de las cosas que necesito que confirmes (ver sección 8).
 
 ---
 
@@ -94,3 +97,4 @@ Configura una alerta en **Azure Cost Management + Budgets** en cuanto montes la 
 - ¿Manejamos un solo ambiente de producción por ahora, o vale la pena un ambiente de staging separado desde el inicio (cuesta un poco más, pero evita probar cambios directo en el cliente real)?
 - ¿Quién administra el Key Vault y quién tiene acceso a los secrets — tú, yo, ambos?
 - ¿Prefieres pay-as-you-go para arrancar (recomendado, dado que no sabemos el ritmo de crecimiento) o ya quieres evaluar algún compromiso desde ahora?
+- ¿Qué proveedor de correo transaccional usamos (Azure Communication Services Email, SendGrid, otro)? El backend ya está listo para cualquier SMTP — falta la decisión y las credenciales reales.

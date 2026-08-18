@@ -9,7 +9,7 @@ from customers.models import Client, CreditAccount, CreditMovement
 class ClientSerializer(serializers.ModelSerializer):
     class Meta:
         model = Client
-        fields = ['id', 'name', 'phone', 'credit_limit', 'company', 'created_at', 'updated_at']
+        fields = ['id', 'name', 'phone', 'email', 'credit_limit', 'company', 'created_at', 'updated_at']
         read_only_fields = ['company', 'created_at', 'updated_at']
 
 

@@ -55,13 +55,20 @@ apiClient.interceptors.response.use(
  * - 401 -> igual que el bug de login ya corregido (SimpleJWT devuelve
  *   texto en inglés sin pasar por el exception_handler), nunca se intenta
  *   leer `detail` de un 401.
- * - 5xx -> mensaje genérico humano, nunca el detail crudo del backend
- *   (puede ser HTML de la página de error de Django, no JSON). */
+ * - 500 exacto -> mensaje genérico humano, nunca el detail crudo del
+ *   backend (puede ser HTML de la página de error de Django, no JSON:
+ *   es el único código que Django/DRF genera automático ante una
+ *   excepción no manejada, nunca lo devuelve código propio a propósito).
+ * - 502/503/504 -> SÍ se lee `detail`: a diferencia de 500, ningún código
+ *   de este proyecto los produce por accidente — solo aparecen cuando una
+ *   vista los devuelve a propósito con un mensaje ya pensado para
+ *   mostrarse (ej. sales.views.send_ticket_email cuando el SMTP falla),
+ *   igual de seguro que cualquier 400. */
 export function apiErrorMessage(error: unknown, fallback: string): string {
   if (axios.isAxiosError(error)) {
     if (!error.response) return t.common.errorNetwork
     if (error.response.status === 401) return t.common.errorSessionExpired
-    if (error.response.status >= 500) return t.common.errorServer
+    if (error.response.status === 500) return t.common.errorServer
 
     const detail = error.response.data?.detail
     if (typeof detail === 'string') return detail

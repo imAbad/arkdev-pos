@@ -127,6 +127,12 @@ export const es = {
     changeGiven: 'Cambio entregado',
     print: 'Imprimir',
     back: 'Volver',
+    emailLabel: 'Correo del cliente',
+    emailPlaceholder: 'correo@ejemplo.com',
+    sendByEmail: 'Enviar por correo',
+    sendingByEmail: 'Enviando…',
+    sentByEmail: 'Ticket enviado.',
+    sendEmailErrorGeneric: 'No se pudo enviar el ticket por correo. Intenta de nuevo.',
   },
   reports: {
     navLink: 'Reportes',

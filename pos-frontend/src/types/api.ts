@@ -133,6 +133,7 @@ export interface Sale {
   cash_shift: number
   client: number | null
   client_name: string | null
+  client_email: string | null
   client_uuid: string
   occurred_at: string
   subtotal: string

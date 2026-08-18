@@ -76,11 +76,15 @@ class SaleSerializer(serializers.ModelSerializer):
     details = SaleDetailSerializer(many=True, read_only=True)
     payments = PaymentSerializer(many=True, read_only=True)
     client_name = serializers.CharField(source='client.name', read_only=True, default=None)
+    # Punto 6: precarga editable del correo al enviar el ticket — solo
+    # existe cuando la venta tiene Client asociado (fiado) y ese cliente
+    # ya tiene email guardado; el campo de envío nunca lo exige.
+    client_email = serializers.CharField(source='client.email', read_only=True, default=None)
 
     class Meta:
         model = Sale
         fields = [
-            'id', 'branch', 'cash_register', 'cash_shift', 'client', 'client_name',
+            'id', 'branch', 'cash_register', 'cash_shift', 'client', 'client_name', 'client_email',
             'client_uuid', 'occurred_at',
             'subtotal', 'discount_amount', 'tax_amount', 'total', 'status',
             'details', 'payments', 'company', 'created_at',
@@ -124,3 +128,13 @@ class SaleCreateSerializer(TenantScopedFieldsMixin, serializers.Serializer):
     client_uuid = serializers.UUIDField(required=False)
     details = SaleLineInputSerializer(many=True)
     payments = PaymentInputSerializer(many=True)
+
+
+class SendTicketEmailInputSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    # Se captura en el momento del envío, no requiere que Client tenga
+    # email guardado de antemano (ver sales/serializers.py::SaleSerializer.
+    # client_email para la precarga sugerida cuando sí existe). `change_given`
+    # es opcional porque solo aplica a pagos en efectivo y el backend no lo
+    # guarda como dato propio de la venta — lo manda el frontend si lo tiene.
+    change_given = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, allow_null=True)

@@ -31,9 +31,16 @@ describe('apiErrorMessage', () => {
     expect(message).not.toMatch(/token/i)
   })
 
-  it('mapea cualquier 5xx a un mensaje humano genérico, nunca el detail crudo', () => {
+  it('mapea 500 exacto a un mensaje humano genérico, nunca el detail crudo', () => {
     const error = axiosErrorWithStatus(500, '<html>Internal Server Error</html>')
     expect(apiErrorMessage(error, 'fallback')).toBe(t.common.errorServer)
+  })
+
+  it('502 SÍ lee detail (punto 6: send-ticket-email lo usa para un mensaje ya pensado para mostrarse)', () => {
+    const error = axiosErrorWithStatus(502, { detail: 'No se pudo enviar el correo. Verifica la dirección o intenta de nuevo más tarde.' })
+    expect(apiErrorMessage(error, 'fallback')).toBe(
+      'No se pudo enviar el correo. Verifica la dirección o intenta de nuevo más tarde.',
+    )
   })
 
   it('lee detail como string cuando el backend lo manda así (caso feliz ya existente)', () => {

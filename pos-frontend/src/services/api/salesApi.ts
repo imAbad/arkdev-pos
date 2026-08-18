@@ -80,3 +80,10 @@ export async function createSale(input: CreateSaleInput): Promise<Sale> {
   const response = await apiClient.post<Sale>('/sales/create-sale/', input)
   return response.data
 }
+
+export async function sendTicketByEmail(saleId: number, email: string, changeGiven?: number): Promise<void> {
+  await apiClient.post(`/sales/${saleId}/send-ticket-email/`, {
+    email,
+    change_given: changeGiven && changeGiven > 0 ? changeGiven.toFixed(2) : undefined,
+  })
+}

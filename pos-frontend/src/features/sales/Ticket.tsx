@@ -1,5 +1,10 @@
+import { useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { apiErrorMessage } from '@/lib/api-client'
 import { formatCurrency, formatDateTime } from '@/lib/format'
+import { sendTicketByEmail } from '@/services/api/salesApi'
 import { t } from '@/i18n'
 import { paymentMethodLabel } from '@/features/sales/payment-labels'
 import type { Sale } from '@/types/api'
@@ -28,6 +33,25 @@ const UNIT_LABEL: Record<string, string> = {
  * Tailwind. Integración con impresora térmica queda para el punto 8 del
  * blueprint (hardware real), pospuesto a propósito. */
 export function Ticket({ sale, businessName, changeGiven, onBack }: TicketProps) {
+  const [email, setEmail] = useState(sale.client_email ?? '')
+  const [sendingEmail, setSendingEmail] = useState(false)
+  const [emailError, setEmailError] = useState<string | null>(null)
+  const [emailSent, setEmailSent] = useState(false)
+
+  async function handleSendEmail() {
+    setSendingEmail(true)
+    setEmailError(null)
+    setEmailSent(false)
+    try {
+      await sendTicketByEmail(sale.id, email, changeGiven)
+      setEmailSent(true)
+    } catch (err) {
+      setEmailError(apiErrorMessage(err, t.ticket.sendEmailErrorGeneric))
+    } finally {
+      setSendingEmail(false)
+    }
+  }
+
   return (
     <div className="flex min-h-svh flex-col items-center bg-surface-muted p-6 print:bg-white print:p-0">
       <div className="flex w-full max-w-sm justify-between gap-3 print:hidden">
@@ -98,6 +122,33 @@ export function Ticket({ sale, businessName, changeGiven, onBack }: TicketProps)
             </div>
           )}
         </div>
+      </div>
+
+      <div className="mt-6 w-full max-w-sm print:hidden">
+        <Label htmlFor="ticket-email">{t.ticket.emailLabel}</Label>
+        <Input
+          id="ticket-email"
+          type="email"
+          placeholder={t.ticket.emailPlaceholder}
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+          disabled={sendingEmail}
+        />
+        <Button
+          type="button"
+          variant="confirm"
+          className="mt-3 w-full"
+          onClick={() => void handleSendEmail()}
+          disabled={sendingEmail || !email.trim()}
+        >
+          {sendingEmail ? t.ticket.sendingByEmail : t.ticket.sendByEmail}
+        </Button>
+        {emailSent && <p className="mt-2 text-lg font-medium text-confirm">{t.ticket.sentByEmail}</p>}
+        {emailError && (
+          <p role="alert" className="mt-2 text-lg font-medium text-cancel">
+            {emailError}
+          </p>
+        )}
       </div>
     </div>
   )

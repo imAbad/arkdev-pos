@@ -106,6 +106,23 @@ STATIC_URL = 'static/'
 MEDIA_URL = 'media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
+# Correo transaccional (punto 6: ticket por correo; punto 7: resumen diario
+# de stock bajo) — sin proveedor decidido todavía (SendGrid, Azure
+# Communication Services, o cualquier SMTP real, ver
+# documentacion/brief_infraestructura_carlos.md). Sin EMAIL_HOST configurado
+# cae al backend de consola de Django (imprime el correo en logs en vez de
+# enviarlo) — así dev funciona sin credenciales reales desde el día 1.
+EMAIL_BACKEND = config(
+    'EMAIL_BACKEND',
+    default='django.core.mail.backends.console.EmailBackend' if not config('EMAIL_HOST', default='') else 'django.core.mail.backends.smtp.EmailBackend',
+)
+EMAIL_HOST = config('EMAIL_HOST', default='')
+EMAIL_PORT = config('EMAIL_PORT', default=587, cast=int)
+EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
+EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
+EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=True, cast=bool)
+DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='no-reply@arkdev-pos.local')
+
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (

@@ -132,6 +132,7 @@ export function makeSale(overrides: Partial<Sale> = {}): Sale {
     cash_shift: 1,
     client: null,
     client_name: null,
+    client_email: null,
     client_uuid: '11111111-1111-1111-1111-111111111111',
     occurred_at: '2026-08-18T12:05:00Z',
     subtotal: '18.00',

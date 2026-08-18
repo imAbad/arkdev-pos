@@ -14,6 +14,11 @@ class Client(BaseTenantModel):
 
     name = models.CharField(max_length=200)
     phone = models.CharField(max_length=20, blank=True)
+    # Punto 6: si el cliente de una venta a crédito ya tiene correo
+    # guardado, se precarga como sugerencia editable al enviar el ticket
+    # — no se exige de antemano, la mayoría de las ventas no tienen
+    # Client asociado (solo fiado lo requiere).
+    email = models.EmailField(blank=True)
     credit_limit = models.DecimalField(max_digits=12, decimal_places=2, default=0)
 
     def save(self, *args, **kwargs):

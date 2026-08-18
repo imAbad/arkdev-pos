@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from catalog.models import Batch, Product
 from core.mixins import TenantScopedViewSetMixin
 from core.permissions import HandlesCash
+from sales.emails import TicketEmailError, send_sale_ticket_email
 from sales.models import CashRegister, CashShift, Sale
 from sales.serializers import (
     CashRegisterSerializer,
@@ -14,11 +15,13 @@ from sales.serializers import (
     OpenShiftInputSerializer,
     SaleCreateSerializer,
     SaleSerializer,
+    SendTicketEmailInputSerializer,
 )
 from sales.services import RegisterAlreadyOpenError, SaleError, ShiftError, ShiftPermissionError
 from sales.services import close_shift as close_shift_service
 from sales.services import create_sale as create_sale_service
 from sales.services import open_shift as open_shift_service
+from tenants.models import CompanySettings
 
 
 class CashRegisterViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
@@ -165,3 +168,25 @@ class SaleViewSet(TenantScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
             return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response(self.get_serializer(sale).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='send-ticket-email')
+    def send_ticket_email(self, request, pk=None):
+        sale = self.get_object()
+        input_serializer = SendTicketEmailInputSerializer(data=request.data)
+        input_serializer.is_valid(raise_exception=True)
+        data = input_serializer.validated_data
+
+        company_settings = CompanySettings.objects.filter(company=sale.company).first()
+        business_name = (company_settings.business_name if company_settings else '') or 'Punto de Venta'
+
+        try:
+            send_sale_ticket_email(
+                sale=sale,
+                business_name=business_name,
+                to_email=data['email'],
+                change_given=data.get('change_given'),
+            )
+        except TicketEmailError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+
+        return Response({'detail': 'Ticket enviado.'}, status=status.HTTP_200_OK)
