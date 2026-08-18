@@ -13,6 +13,7 @@ from openpyxl import load_workbook
 from rest_framework import status
 from rest_framework.test import APITestCase
 
+from audit.models import AuditLog
 from catalog.tests.factories import create_batch
 from reports.excel import build_excel_response
 from sales.services import close_shift
@@ -151,3 +152,50 @@ class ReportExcelExportApiTests(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response['Content-Type'], 'application/json')
+
+
+class ExportAuditLogTests(APITestCase):
+    """Observación de sesión, punto 3: quién exportó, qué reporte, con qué
+    filtros y cuándo — un registro en AuditLog, no una columna dentro del
+    Excel."""
+
+    def setUp(self):
+        self.ctx = create_checkout_context()
+        self.today = timezone.localdate()
+        self.admin, _ = create_user_with_profile(
+            'admin@donchuy.test', self.ctx['branch'], role=UserProfile.Role.ADMINISTRADOR,
+        )
+
+    def _auth(self, user):
+        self.client.force_authenticate(user=user)
+
+    def test_exporting_sales_by_product_logs_who_what_and_filters(self):
+        self._auth(self.admin)
+        self.client.get(
+            '/api/v1/reports/sales-by-product/',
+            {'date_from': self.today, 'date_to': self.today, 'export': 'xlsx', 'group_by': 'category'},
+        )
+        entry = AuditLog.objects.get(action='report.exported')
+        self.assertEqual(entry.user, self.admin)
+        self.assertEqual(entry.company, self.ctx['company'])
+        self.assertEqual(entry.changes['report'], 'ventas-por-producto')
+        self.assertEqual(entry.changes['group_by'], 'category')
+        self.assertEqual(entry.changes['date_from'], str(self.today))
+        self.assertIsNone(entry.changes['branch'])
+
+    def test_exporting_with_a_branch_filter_logs_the_branch_name(self):
+        self._auth(self.admin)
+        self.client.get(
+            '/api/v1/reports/inventory-valuation/',
+            {'export': 'xlsx', 'branch': self.ctx['branch'].id},
+        )
+        entry = AuditLog.objects.get(action='report.exported')
+        self.assertEqual(entry.changes['report'], 'valuacion-de-inventario')
+        self.assertEqual(entry.changes['branch'], self.ctx['branch'].name)
+
+    def test_viewing_json_without_exporting_does_not_log_anything(self):
+        self._auth(self.admin)
+        self.client.get(
+            '/api/v1/reports/sales-by-product/', {'date_from': self.today, 'date_to': self.today},
+        )
+        self.assertFalse(AuditLog.objects.filter(action='report.exported').exists())

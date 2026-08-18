@@ -2,6 +2,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from audit.services import log_action
 from core.permissions import IsAdministratorOrSupervisor
 from reports import services
 from reports.excel import build_excel_response
@@ -54,6 +55,22 @@ def _wants_excel(request):
     return request.query_params.get('export') == 'xlsx'
 
 
+def _log_export(request, report_name, filters):
+    # Observación de sesión, punto 3: no es una columna dentro del Excel,
+    # es un registro en AuditLog de que alguien exportó — mismo mecanismo
+    # ya usado por el resto de acciones sensibles del proyecto (login por
+    # supervisor, cancelación de venta, gestión de usuarios), no una
+    # bitácora aparte. Sin pantalla nueva para verlo: se consulta como
+    # cualquier otro AuditLog (no existe todavía una vista de auditoría en
+    # el frontend — construirla es fuera de alcance de este punto).
+    log_action(
+        company=request.user.profile.company,
+        user=request.user,
+        action='report.exported',
+        changes={'report': report_name, **filters},
+    )
+
+
 def _resolve_branch(request, branch_id):
     """Un `branch` en query params se resuelve contra `.for_user(...)`, no
     contra `Branch.objects.get(pk=...)` directo — mismo motivo que
@@ -103,6 +120,10 @@ class SalesByProductReportView(APIView):
             group_by=data['group_by'],
         )
         if _wants_excel(request):
+            _log_export(request, 'ventas-por-producto', {
+                'group_by': data['group_by'], 'date_from': str(data['date_from']), 'date_to': str(data['date_to']),
+                'branch': branch.name if branch else None,
+            })
             return build_excel_response(
                 filename='ventas-por-producto.xlsx',
                 columns=_SALES_BY_PRODUCT_COLUMNS[data['group_by']],
@@ -124,6 +145,7 @@ class InventoryValuationReportView(APIView):
 
         rows = services.inventory_valuation(company=request.user.profile.company, branch=branch)
         if _wants_excel(request):
+            _log_export(request, 'valuacion-de-inventario', {'branch': branch.name if branch else None})
             return build_excel_response(
                 filename='valuacion-de-inventario.xlsx', columns=_INVENTORY_VALUATION_COLUMNS, rows=rows,
             )
@@ -143,6 +165,7 @@ class ExpiredStockReportView(APIView):
 
         rows = services.expired_stock_report(company=request.user.profile.company, branch=branch)
         if _wants_excel(request):
+            _log_export(request, 'mermas-por-caducidad', {'branch': branch.name if branch else None})
             return build_excel_response(
                 filename='mermas-por-caducidad.xlsx', columns=_EXPIRED_STOCK_COLUMNS, rows=rows,
             )
@@ -186,6 +209,10 @@ class CashShiftClosuresReportView(APIView):
             branch=branch,
         )
         if _wants_excel(request):
+            _log_export(request, 'cierres-de-caja', {
+                'date_from': str(data['date_from']), 'date_to': str(data['date_to']),
+                'branch': branch.name if branch else None,
+            })
             return build_excel_response(
                 filename='cierres-de-caja.xlsx', columns=_CASH_SHIFT_CLOSURES_COLUMNS, rows=rows,
             )
