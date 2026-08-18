@@ -13,6 +13,13 @@ export interface TokenPair {
   refresh: string
 }
 
+export interface SupervisorAuthorization {
+  token: string
+  supervisor_email: string
+  reason: string
+  expires_at: string
+}
+
 export type Role = 'CAJERO' | 'ADMINISTRADOR'
 
 export interface UserProfile {

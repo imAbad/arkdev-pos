@@ -130,6 +130,13 @@ class SaleCreateSerializer(TenantScopedFieldsMixin, serializers.Serializer):
     payments = PaymentInputSerializer(many=True)
 
 
+class CancelSaleInputSerializer(serializers.Serializer):
+    # Emitido por POST /supervisor-authorizations/request/ (punto 6) —
+    # este endpoint solo lo consume, no lo emite (ver sales.services.
+    # cancel_sale -> tenants.services.consume_supervisor_authorization).
+    supervisor_authorization_token = serializers.CharField()
+
+
 class SendTicketEmailInputSerializer(serializers.Serializer):
     email = serializers.EmailField()
     # Se captura en el momento del envío, no requiere que Client tenga

@@ -6,9 +6,11 @@ from django.db.models import Sum
 from django.utils import timezone
 
 from audit.services import log_action
+from catalog.models import Batch
 from catalog.services import InsufficientStockError, decrement_batch_stock, decrement_stock_fefo
-from customers.services import CreditError, charge_credit
+from customers.services import CreditError, charge_credit, pay_credit
 from sales.models import CashShift, Payment, Sale, SaleDetail
+from tenants.services import AuthorizationError, consume_supervisor_authorization
 
 
 class ShiftError(Exception):
@@ -29,6 +31,10 @@ class ShiftPermissionError(Exception):
 
 class SaleError(Exception):
     """Error de regla de negocio al registrar una venta (-> 400)."""
+
+
+class SaleCancellationError(Exception):
+    """Error de regla de negocio al cancelar/devolver una venta (-> 400)."""
 
 
 def compute_expected_totals(shift):
@@ -229,5 +235,60 @@ def create_sale(
                 # Dentro del atomic: si el crédito no alcanza, TODA la venta
                 # se revierte (stock incluido), no solo el cargo.
                 raise SaleError(str(exc))
+
+    return sale
+
+
+def cancel_sale(*, sale, actor, supervisor_authorization_token):
+    """Cancela/devuelve una venta ya cobrada (punto 10, junto con el punto
+    9 lo de mayor riesgo de esta ronda): revierte stock y cualquier cargo
+    a crédito, todo dentro de UNA transacción, vía el mismo mecanismo de
+    token de supervisor ya construido para excepciones
+    (tenants.SupervisorAuthorization) — sin excepción de rol. A diferencia
+    de close_shift (donde ser ADMINISTRADOR ya ES la autoridad para
+    saltarse el dueño del turno), aquí SIEMPRE se exige el token: es la
+    acción más sensible del sistema (revierte dinero y existencias), no
+    algo que un rol por sí solo deba poder saltarse.
+
+    Resultado: `Sale.Status.REFUNDED`, no `CANCELLED`. `create_sale` nunca
+    deja una venta en un estado "a medias" — los pagos deben sumar el
+    total exacto o toda la venta se rechaza (rollback) — así que cualquier
+    Sale que llega a existir ya está completamente cobrada. Revertir eso
+    es una devolución, no la anulación de algo que nunca se cobró.
+    `CANCELLED` queda reservado para un caso que hoy no ocurre en este
+    flujo (una venta que nunca llegó a cobrarse).
+    """
+    if sale.status != Sale.Status.COMPLETED:
+        raise SaleCancellationError('Esta venta ya fue cancelada o devuelta.')
+
+    try:
+        with transaction.atomic():
+            consume_supervisor_authorization(token=supervisor_authorization_token, consuming_user=actor)
+
+            for detail in sale.details.select_related('batch').all():
+                if detail.batch is not None:
+                    locked_batch = Batch.objects.select_for_update().get(pk=detail.batch_id)
+                    locked_batch.current_quantity += detail.quantity
+                    locked_batch.save(update_fields=['current_quantity'])
+
+            credit_total = (
+                sale.payments.filter(method=Payment.Method.CREDIT).aggregate(total=Sum('amount'))['total']
+                or Decimal('0')
+            )
+            if credit_total > 0:
+                pay_credit(account=sale.client.credit_account, amount=credit_total, sale=sale)
+
+            sale.status = Sale.Status.REFUNDED
+            sale.save(update_fields=['status'])
+
+            log_action(
+                company=sale.company,
+                user=actor,
+                action='sale.cancelled',
+                instance=sale,
+                changes={'total': str(sale.total), 'credit_reverted': str(credit_total)},
+            )
+    except AuthorizationError as exc:
+        raise SaleCancellationError(str(exc))
 
     return sale

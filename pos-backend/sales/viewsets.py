@@ -9,6 +9,7 @@ from core.permissions import HandlesCash
 from sales.emails import TicketEmailError, send_sale_ticket_email
 from sales.models import CashRegister, CashShift, Sale
 from sales.serializers import (
+    CancelSaleInputSerializer,
     CashRegisterSerializer,
     CashShiftSerializer,
     CloseShiftInputSerializer,
@@ -17,7 +18,8 @@ from sales.serializers import (
     SaleSerializer,
     SendTicketEmailInputSerializer,
 )
-from sales.services import RegisterAlreadyOpenError, SaleError, ShiftError, ShiftPermissionError
+from sales.services import RegisterAlreadyOpenError, SaleCancellationError, SaleError, ShiftError, ShiftPermissionError
+from sales.services import cancel_sale as cancel_sale_service
 from sales.services import close_shift as close_shift_service
 from sales.services import create_sale as create_sale_service
 from sales.services import open_shift as open_shift_service
@@ -168,6 +170,23 @@ class SaleViewSet(TenantScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
             return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response(self.get_serializer(sale).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='cancel')
+    def cancel(self, request, pk=None):
+        sale = self.get_object()
+        input_serializer = CancelSaleInputSerializer(data=request.data)
+        input_serializer.is_valid(raise_exception=True)
+
+        try:
+            sale = cancel_sale_service(
+                sale=sale,
+                actor=request.user,
+                supervisor_authorization_token=input_serializer.validated_data['supervisor_authorization_token'],
+            )
+        except SaleCancellationError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(self.get_serializer(sale).data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='send-ticket-email')
     def send_ticket_email(self, request, pk=None):

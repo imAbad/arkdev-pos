@@ -87,3 +87,14 @@ export async function sendTicketByEmail(saleId: number, email: string, changeGiv
     change_given: changeGiven && changeGiven > 0 ? changeGiven.toFixed(2) : undefined,
   })
 }
+
+/** Punto 10: revierte stock y cualquier cargo a crédito server-side —
+ * este endpoint solo consume un token ya emitido por
+ * requestSupervisorAuthorization (authApi.ts), no valida credenciales
+ * directo. */
+export async function cancelSale(saleId: number, supervisorAuthorizationToken: string): Promise<Sale> {
+  const response = await apiClient.post<Sale>(`/sales/${saleId}/cancel/`, {
+    supervisor_authorization_token: supervisorAuthorizationToken,
+  })
+  return response.data
+}

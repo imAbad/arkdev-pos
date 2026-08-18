@@ -84,3 +84,56 @@ describe('Ticket — envío por correo (punto 6)', () => {
     expect(screen.getByRole('button', { name: t.ticket.sendByEmail })).toBeDisabled()
   })
 })
+
+describe('Ticket — cancelar/devolver venta (punto 10)', () => {
+  it('cancela la venta con credenciales de supervisor válidas y muestra el estado actualizado', async () => {
+    server.use(
+      http.post(`${BASE}/auth/authorize-exception/`, () =>
+        HttpResponse.json({ token: 'tok-123', supervisor_email: 'admin@donchuy.test', reason: '', expires_at: '2026-08-18T13:00:00Z' }),
+      ),
+      http.post(`${BASE}/sales/42/cancel/`, async ({ request }) => {
+        const body = (await request.json()) as { supervisor_authorization_token: string }
+        expect(body.supervisor_authorization_token).toBe('tok-123')
+        return HttpResponse.json({ ...SALE, status: 'REFUNDED' })
+      }),
+    )
+
+    const user = userEvent.setup()
+    render(<Ticket sale={SALE} businessName="Abarrotes Don Chuy" changeGiven={0} onBack={vi.fn()} />)
+
+    await user.click(screen.getByRole('button', { name: t.ticket.cancelSale }))
+    await user.type(screen.getByLabelText(t.ticket.supervisorEmail), 'admin@donchuy.test')
+    await user.type(screen.getByLabelText(t.ticket.supervisorPassword), 'demo1234')
+    await user.click(screen.getByRole('button', { name: t.ticket.confirmCancelSale }))
+
+    expect(await screen.findByText(t.ticket.statusRefunded)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: t.ticket.cancelSale })).not.toBeInTheDocument()
+  })
+
+  it('muestra un error legible si las credenciales de supervisor son inválidas', async () => {
+    server.use(
+      http.post(`${BASE}/auth/authorize-exception/`, () =>
+        HttpResponse.json({ detail: 'Credenciales de supervisor inválidas o sin autoridad para autorizar.' }, { status: 403 }),
+      ),
+    )
+
+    const user = userEvent.setup()
+    render(<Ticket sale={SALE} businessName="Abarrotes Don Chuy" changeGiven={0} onBack={vi.fn()} />)
+
+    await user.click(screen.getByRole('button', { name: t.ticket.cancelSale }))
+    await user.type(screen.getByLabelText(t.ticket.supervisorEmail), 'admin@donchuy.test')
+    await user.type(screen.getByLabelText(t.ticket.supervisorPassword), 'contraseña-mala')
+    await user.click(screen.getByRole('button', { name: t.ticket.confirmCancelSale }))
+
+    expect(
+      await screen.findByText('Credenciales de supervisor inválidas o sin autoridad para autorizar.'),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: t.ticket.confirmCancelSale })).toBeInTheDocument()
+  })
+
+  it('una venta ya devuelta no muestra el botón de cancelar', () => {
+    render(<Ticket sale={{ ...SALE, status: 'REFUNDED' }} businessName="Abarrotes Don Chuy" changeGiven={0} onBack={vi.fn()} />)
+    expect(screen.getByText(t.ticket.statusRefunded)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: t.ticket.cancelSale })).not.toBeInTheDocument()
+  })
+})

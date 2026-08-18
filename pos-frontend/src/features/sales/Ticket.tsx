@@ -4,7 +4,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { apiErrorMessage } from '@/lib/api-client'
 import { formatCurrency, formatDateTime } from '@/lib/format'
-import { sendTicketByEmail } from '@/services/api/salesApi'
+import { requestSupervisorAuthorization } from '@/services/api/authApi'
+import { cancelSale, sendTicketByEmail } from '@/services/api/salesApi'
 import { t } from '@/i18n'
 import { paymentMethodLabel } from '@/features/sales/payment-labels'
 import type { Sale } from '@/types/api'
@@ -32,8 +33,9 @@ const UNIT_LABEL: Record<string, string> = {
  * los botones de acción se ocultan con la variante `print:hidden` de
  * Tailwind. Integración con impresora térmica queda para el punto 8 del
  * blueprint (hardware real), pospuesto a propósito. */
-export function Ticket({ sale, businessName, changeGiven, onBack }: TicketProps) {
-  const [email, setEmail] = useState(sale.client_email ?? '')
+export function Ticket({ sale: initialSale, businessName, changeGiven, onBack }: TicketProps) {
+  const [sale, setSale] = useState(initialSale)
+  const [email, setEmail] = useState(initialSale.client_email ?? '')
   const [sendingEmail, setSendingEmail] = useState(false)
   const [emailError, setEmailError] = useState<string | null>(null)
   const [emailSent, setEmailSent] = useState(false)
@@ -150,6 +152,117 @@ export function Ticket({ sale, businessName, changeGiven, onBack }: TicketProps)
           </p>
         )}
       </div>
+
+      <div className="mt-6 w-full max-w-sm print:hidden">
+        <CancelSaleSection sale={sale} onCancelled={setSale} />
+      </div>
+    </div>
+  )
+}
+
+/** Punto 10: cancelar/devolver una venta ya cobrada — pide credenciales
+ * de un administrador/supervisor (sin tocar la sesión del cajero actual,
+ * mismo mecanismo que el resto del sistema para excepciones), obtiene un
+ * token de un solo uso y lo consume en un segundo paso. Dos llamadas
+ * separadas porque son dos responsabilidades distintas del backend
+ * (auth.authorize-exception emite, sales/{id}/cancel consume) — igual
+ * que ya está separado del lado del servidor. */
+function CancelSaleSection({ sale, onCancelled }: { sale: Sale; onCancelled: (sale: Sale) => void }) {
+  const [open, setOpen] = useState(false)
+  const [supervisorEmail, setSupervisorEmail] = useState('')
+  const [supervisorPassword, setSupervisorPassword] = useState('')
+  const [reason, setReason] = useState('')
+  const [cancelling, setCancelling] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [justCancelled, setJustCancelled] = useState(false)
+
+  if (sale.status === 'REFUNDED' || sale.status === 'CANCELLED') {
+    return (
+      <div>
+        <p className="text-lg font-semibold text-cancel">
+          {sale.status === 'REFUNDED' ? t.ticket.statusRefunded : t.ticket.statusCancelled}
+        </p>
+        {justCancelled && <p className="mt-1 text-base text-ink/70">{t.ticket.saleCancelledNotice}</p>}
+      </div>
+    )
+  }
+
+  async function handleConfirm() {
+    setCancelling(true)
+    setError(null)
+    try {
+      const authorization = await requestSupervisorAuthorization(supervisorEmail, supervisorPassword, reason)
+      const updated = await cancelSale(sale.id, authorization.token)
+      onCancelled(updated)
+      setJustCancelled(true)
+      setOpen(false)
+    } catch (err) {
+      setError(apiErrorMessage(err, t.ticket.cancelSaleErrorGeneric))
+    } finally {
+      setCancelling(false)
+    }
+  }
+
+  if (!open) {
+    return (
+      <Button type="button" variant="cancel" className="w-full" onClick={() => setOpen(true)}>
+        {t.ticket.cancelSale}
+      </Button>
+    )
+  }
+
+  return (
+    <div className="rounded-2xl border-2 border-border bg-white p-4">
+      <p className="text-lg font-bold text-ink">{t.ticket.cancelSaleTitle}</p>
+      <p className="mt-1 text-base text-ink/70">{t.ticket.cancelSaleExplanation}</p>
+
+      <div className="mt-4 flex flex-col gap-3">
+        <div>
+          <Label htmlFor="cancel-supervisor-email">{t.ticket.supervisorEmail}</Label>
+          <Input
+            id="cancel-supervisor-email"
+            type="email"
+            value={supervisorEmail}
+            onChange={(e) => setSupervisorEmail(e.target.value)}
+            disabled={cancelling}
+          />
+        </div>
+        <div>
+          <Label htmlFor="cancel-supervisor-password">{t.ticket.supervisorPassword}</Label>
+          <Input
+            id="cancel-supervisor-password"
+            type="password"
+            value={supervisorPassword}
+            onChange={(e) => setSupervisorPassword(e.target.value)}
+            disabled={cancelling}
+          />
+        </div>
+        <div>
+          <Label htmlFor="cancel-reason">{t.ticket.cancelReason}</Label>
+          <Input id="cancel-reason" value={reason} onChange={(e) => setReason(e.target.value)} disabled={cancelling} />
+        </div>
+      </div>
+
+      <div className="mt-4 flex gap-3">
+        <Button type="button" variant="neutral" className="flex-1" onClick={() => setOpen(false)} disabled={cancelling}>
+          {t.ticket.dismissCancelSale}
+        </Button>
+        <Button
+          type="button"
+          variant="cancel"
+          className="flex-1"
+          onClick={() => void handleConfirm()}
+          disabled={cancelling || !supervisorEmail.trim() || !supervisorPassword}
+        >
+          {cancelling ? t.ticket.cancellingSale : t.ticket.confirmCancelSale}
+        </Button>
+      </div>
+
+      {error && (
+        <p role="alert" className="mt-3 text-lg font-medium text-cancel">
+          {error}
+        </p>
+      )}
     </div>
   )
 }

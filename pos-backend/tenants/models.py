@@ -133,10 +133,10 @@ class SupervisorAuthorization(BaseTenantModel):
     supervisor (email+password, mismo mecanismo de auth que ya existe) SIN
     tocar la sesión del cajero actual, y emite un token corto de un solo
     uso. `tenants.services.request_supervisor_authorization` lo emite;
-    `consume_supervisor_authorization` lo consume. Ningún endpoint de
-    acción sensible (cancelar venta, aplicar descuento) existe todavía —
-    esta es la pieza genérica de autorización, reutilizable cuando esos
-    endpoints se construyan.
+    `consume_supervisor_authorization` lo consume. `sales.services.
+    cancel_sale` (punto 10) es el primer consumidor real de esta pieza
+    genérica de autorización — cancelar/devolver una venta ya cobrada
+    exige un token de este mecanismo, sin excepción de rol.
     """
 
     token = models.CharField(max_length=64, unique=True, editable=False)
