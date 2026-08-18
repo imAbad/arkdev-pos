@@ -13,6 +13,7 @@ import type { Sale } from '@/types/api'
 interface TicketProps {
   sale: Sale
   businessName: string
+  logoUrl?: string | null
   changeGiven: number
   onBack: () => void
 }
@@ -33,7 +34,7 @@ const UNIT_LABEL: Record<string, string> = {
  * los botones de acción se ocultan con la variante `print:hidden` de
  * Tailwind. Integración con impresora térmica queda para el punto 8 del
  * blueprint (hardware real), pospuesto a propósito. */
-export function Ticket({ sale: initialSale, businessName, changeGiven, onBack }: TicketProps) {
+export function Ticket({ sale: initialSale, businessName, logoUrl, changeGiven, onBack }: TicketProps) {
   const [sale, setSale] = useState(initialSale)
   const [email, setEmail] = useState(initialSale.client_email ?? '')
   const [sendingEmail, setSendingEmail] = useState(false)
@@ -67,6 +68,7 @@ export function Ticket({ sale: initialSale, businessName, changeGiven, onBack }:
 
       <div className="mt-6 w-full max-w-sm rounded-3xl border-2 border-border bg-white p-6 font-mono text-ink print:mt-0 print:w-full print:max-w-none print:rounded-none print:border-0">
         <div className="text-center">
+          {logoUrl && <img src={logoUrl} alt={businessName} className="mx-auto mb-2 h-16 w-16 object-contain" />}
           <p className="text-xl font-bold">{businessName}</p>
           <p className="mt-1 text-sm">{t.ticket.title}</p>
           <p className="text-sm">

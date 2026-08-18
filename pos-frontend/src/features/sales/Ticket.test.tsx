@@ -17,6 +17,18 @@ const SALE = makeSale({
   payments: [{ id: 1, method: 'CASH', amount: '24.00', reference: '' }],
 })
 
+describe('Ticket — logo del negocio (observación de sesión, punto 4)', () => {
+  it('muestra el logo cuando companySettings tiene uno', () => {
+    render(<Ticket sale={SALE} businessName="Abarrotes Don Chuy" logoUrl="http://localhost:8000/media/tenant_2/logo.png" changeGiven={0} onBack={vi.fn()} />)
+    expect(screen.getByRole('img')).toHaveAttribute('src', 'http://localhost:8000/media/tenant_2/logo.png')
+  })
+
+  it('no muestra ninguna imagen cuando no hay logo configurado', () => {
+    render(<Ticket sale={SALE} businessName="Abarrotes Don Chuy" changeGiven={0} onBack={vi.fn()} />)
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
+  })
+})
+
 describe('Ticket — envío por correo (punto 6)', () => {
   it('el campo de correo se precarga con client_email si la venta tiene uno', () => {
     const sale = { ...SALE, client_email: 'cliente@test.com' }

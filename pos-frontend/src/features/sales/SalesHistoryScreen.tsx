@@ -63,6 +63,7 @@ export function SalesHistoryScreen() {
       <Ticket
         sale={selected}
         businessName={businessName}
+        logoUrl={companySettings?.logo}
         changeGiven={0}
         onBack={() => {
           setSelected(null)

@@ -118,6 +118,7 @@ export function SaleScreen({ shift }: SaleScreenProps) {
       <Ticket
         sale={completed.sale}
         businessName={businessName}
+        logoUrl={companySettings?.logo}
         changeGiven={completed.changeGiven}
         onBack={() => setViewingTicket(false)}
       />
