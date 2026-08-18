@@ -211,6 +211,7 @@ class Payment(BaseTenantModel):
     sale = models.ForeignKey(Sale, on_delete=models.CASCADE, related_name='payments')
     method = models.CharField(max_length=10, choices=Method.choices)
     amount = models.DecimalField(max_digits=12, decimal_places=2)
+    reference = models.CharField(max_length=20, blank=True, default='')
 
     def save(self, *args, **kwargs):
         self.company_id = self.sale.company_id

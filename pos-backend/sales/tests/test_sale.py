@@ -82,6 +82,22 @@ class CreateSaleServiceTests(TestCase):
         self.assertEqual(sale.total, Decimal('23.20'))
         self.assertEqual(sale.status, Sale.Status.COMPLETED)
 
+    def test_payment_reference_is_stored_when_provided(self):
+        sale = create_sale(
+            cash_shift=self.ctx['shift'],
+            details=[{'product': self.ctx['product'], 'batch': None, 'quantity': Decimal('1'), 'unit_price': Decimal('10.00')}],
+            payments=[{'method': 'CARD', 'amount': Decimal('11.60'), 'reference': 'AUTH-4521'}],
+        )
+        self.assertEqual(sale.payments.get().reference, 'AUTH-4521')
+
+    def test_payment_reference_defaults_to_blank_when_omitted(self):
+        sale = create_sale(
+            cash_shift=self.ctx['shift'],
+            details=[{'product': self.ctx['product'], 'batch': None, 'quantity': Decimal('1'), 'unit_price': Decimal('10.00')}],
+            payments=[{'method': 'CASH', 'amount': Decimal('11.60')}],
+        )
+        self.assertEqual(sale.payments.get().reference, '')
+
     def test_split_payment_across_multiple_methods_matching_total(self):
         sale = create_sale(
             cash_shift=self.ctx['shift'],

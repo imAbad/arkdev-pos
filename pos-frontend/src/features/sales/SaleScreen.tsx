@@ -24,6 +24,7 @@ export function SaleScreen({ shift }: SaleScreenProps) {
   const [cart, setCart] = useState<CartLine[]>([])
   const [method, setMethod] = useState<PaymentMethod>('CASH')
   const [cashReceived, setCashReceived] = useState('0')
+  const [reference, setReference] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [confirmingCancel, setConfirmingCancel] = useState(false)
@@ -54,6 +55,7 @@ export function SaleScreen({ shift }: SaleScreenProps) {
     setCart([])
     setMethod('CASH')
     setCashReceived('0')
+    setReference('')
     setError(null)
     setCompleted(null)
     setViewingTicket(false)
@@ -80,7 +82,7 @@ export function SaleScreen({ shift }: SaleScreenProps) {
           quantity: line.quantity.toFixed(3),
           unit_price: line.product.sale_price,
         })),
-        payments: [{ method, amount: total.toFixed(2) }],
+        payments: [{ method, amount: total.toFixed(2), reference: reference || undefined }],
       })
       const changeGiven = method === 'CASH' ? Math.max(0, Number(cashReceived) - total) : 0
       setCompleted({ sale, changeGiven })
@@ -136,6 +138,8 @@ export function SaleScreen({ shift }: SaleScreenProps) {
             onChangeMethod={setMethod}
             cashReceived={cashReceived}
             onChangeCashReceived={setCashReceived}
+            reference={reference}
+            onChangeReference={setReference}
             onCharge={handleCharge}
             submitting={submitting}
             disabled={cart.length === 0}

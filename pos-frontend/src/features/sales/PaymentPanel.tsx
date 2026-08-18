@@ -18,6 +18,8 @@ interface PaymentPanelProps {
   onChangeMethod: (method: PaymentMethod) => void
   cashReceived: string
   onChangeCashReceived: (value: string) => void
+  reference: string
+  onChangeReference: (value: string) => void
   onCharge: () => void
   submitting: boolean
   disabled: boolean
@@ -29,6 +31,8 @@ export function PaymentPanel({
   onChangeMethod,
   cashReceived,
   onChangeCashReceived,
+  reference,
+  onChangeReference,
   onCharge,
   submitting,
   disabled,
@@ -60,6 +64,20 @@ export function PaymentPanel({
           ))}
         </div>
       </div>
+
+      {(method === 'CARD' || method === 'TRANSFER') && (
+        <div>
+          <Label htmlFor="payment-reference">{t.sale.referenceLabel}</Label>
+          <Input
+            id="payment-reference"
+            type="text"
+            maxLength={20}
+            placeholder={t.sale.referencePlaceholder}
+            value={reference}
+            onChange={(event) => onChangeReference(event.target.value)}
+          />
+        </div>
+      )}
 
       {method === 'CASH' && (
         <div>

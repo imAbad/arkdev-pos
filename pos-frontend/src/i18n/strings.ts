@@ -53,6 +53,8 @@ export const es = {
     methodCard: 'Tarjeta',
     methodTransfer: 'Transferencia',
     methodCredit: 'Crédito (fiado)',
+    referenceLabel: 'Referencia (folio o últimos dígitos)',
+    referencePlaceholder: 'Opcional',
     cashReceived: 'Efectivo recibido',
     change: 'Cambio a entregar',
     changeInsufficient: 'El efectivo recibido es menor al total.',

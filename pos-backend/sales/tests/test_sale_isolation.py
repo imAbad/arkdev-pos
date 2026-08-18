@@ -52,6 +52,16 @@ class SaleApiTests(APITestCase):
         self.assertEqual(len(response.data['details']), 1)
         self.assertEqual(len(response.data['payments']), 1)
 
+    def test_create_sale_stores_and_returns_payment_reference(self):
+        self._auth(self.ctx_a['user'])
+        payload = self._checkout_payload(
+            self.ctx_a,
+            payments=[{'method': 'CARD', 'amount': str(self.ctx_a['product'].tax_rate / 100 * 10 + 10), 'reference': 'AUTH-1234'}],
+        )
+        response = self.client.post('/api/v1/sales/create-sale/', payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(response.data['payments'][0]['reference'], 'AUTH-1234')
+
     def test_list_sales_only_returns_own_tenant(self):
         sale_a = make_sale(self.ctx_a['shift'], self.ctx_a['product'])
         make_sale(self.ctx_b['shift'], self.ctx_b['product'])

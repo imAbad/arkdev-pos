@@ -68,7 +68,7 @@ class SaleDetailSerializer(serializers.ModelSerializer):
 class PaymentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Payment
-        fields = ['id', 'method', 'amount']
+        fields = ['id', 'method', 'amount', 'reference']
         read_only_fields = fields
 
 
@@ -107,6 +107,7 @@ class SaleLineInputSerializer(serializers.Serializer):
 class PaymentInputSerializer(serializers.Serializer):
     method = serializers.ChoiceField(choices=Payment.Method.choices)
     amount = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=Decimal('0.01'))
+    reference = serializers.CharField(max_length=20, required=False, allow_blank=True, default='')
 
 
 class SaleCreateSerializer(TenantScopedFieldsMixin, serializers.Serializer):

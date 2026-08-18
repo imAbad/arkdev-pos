@@ -37,6 +37,7 @@ export interface CreateSaleLineInput {
 export interface CreateSalePaymentInput {
   method: PaymentMethod
   amount: string
+  reference?: string
 }
 
 export interface CreateSaleInput {

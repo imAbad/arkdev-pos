@@ -196,7 +196,9 @@ def create_sale(
         for row in detail_rows:
             SaleDetail.objects.create(sale=sale, **row)
         for p in payments:
-            Payment.objects.create(sale=sale, method=p['method'], amount=p['amount'])
+            Payment.objects.create(
+                sale=sale, method=p['method'], amount=p['amount'], reference=p.get('reference', ''),
+            )
 
         if credit_total > 0:
             try:

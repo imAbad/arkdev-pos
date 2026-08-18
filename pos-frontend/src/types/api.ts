@@ -112,6 +112,7 @@ export interface Payment {
   id: number
   method: PaymentMethod
   amount: string
+  reference: string
 }
 
 export type SaleStatus = 'COMPLETED' | 'CANCELLED' | 'REFUNDED'
