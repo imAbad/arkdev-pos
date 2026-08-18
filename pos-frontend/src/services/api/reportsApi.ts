@@ -23,6 +23,21 @@ function branchParam(branchId?: number | null) {
   return branchId ? { branch: branchId } : {}
 }
 
+/** Punto 11: dispara la descarga real del archivo en el navegador —
+ * `export=xlsx` (no `format=xlsx`: DRF reserva ese nombre para su propia
+ * negociación de contenido y devuelve 404 antes de llegar a la vista, ver
+ * reports/views.py del backend). `responseType: 'blob'` porque axios no
+ * debe intentar parsear la respuesta como JSON. */
+async function downloadExcel(url: string, params: Record<string, unknown>, filename: string): Promise<void> {
+  const response = await apiClient.get<Blob>(url, { params: { ...params, export: 'xlsx' }, responseType: 'blob' })
+  const blobUrl = URL.createObjectURL(response.data)
+  const link = document.createElement('a')
+  link.href = blobUrl
+  link.download = filename
+  link.click()
+  URL.revokeObjectURL(blobUrl)
+}
+
 export async function getSalesByProduct(filters: DateRangeReportFilters): Promise<SalesByProductRow[]> {
   const response = await apiClient.get<SalesByProductRow[]>('/reports/sales-by-product/', {
     params: { date_from: filters.dateFrom, date_to: filters.dateTo, group_by: 'product', ...branchParam(filters.branchId) },
@@ -75,4 +90,52 @@ export async function getCashShiftClosures(filters: DateRangeReportFilters): Pro
     params: { date_from: filters.dateFrom, date_to: filters.dateTo, ...branchParam(filters.branchId) },
   })
   return response.data
+}
+
+// Punto 11: exportación a Excel de "los 4 reportes existentes" (los que
+// ya estaban en esta pantalla antes de esta sesión: ventas -por
+// producto/categoría/cajero, un solo endpoint con group_by-, valuación de
+// inventario, mermas por caducidad y cierres de caja). Próximos a
+// caducar (punto 4 de esta misma sesión) no entra — no es de "los 4
+// existentes" que pidió este punto.
+export async function exportSalesByProduct(filters: DateRangeReportFilters): Promise<void> {
+  await downloadExcel(
+    '/reports/sales-by-product/',
+    { date_from: filters.dateFrom, date_to: filters.dateTo, group_by: 'product', ...branchParam(filters.branchId) },
+    'ventas-por-producto.xlsx',
+  )
+}
+
+export async function exportSalesByCategory(filters: DateRangeReportFilters): Promise<void> {
+  await downloadExcel(
+    '/reports/sales-by-product/',
+    { date_from: filters.dateFrom, date_to: filters.dateTo, group_by: 'category', ...branchParam(filters.branchId) },
+    'ventas-por-categoria.xlsx',
+  )
+}
+
+export async function exportSalesByCashier(filters: DateRangeReportFilters): Promise<void> {
+  await downloadExcel(
+    '/reports/sales-by-product/',
+    { date_from: filters.dateFrom, date_to: filters.dateTo, group_by: 'cashier', ...branchParam(filters.branchId) },
+    'ventas-por-cajero.xlsx',
+  )
+}
+
+export async function exportInventoryValuation(filters: BranchOnlyReportFilters): Promise<void> {
+  await downloadExcel(
+    '/reports/inventory-valuation/', { ...branchParam(filters.branchId) }, 'valuacion-de-inventario.xlsx',
+  )
+}
+
+export async function exportExpiredStock(filters: BranchOnlyReportFilters): Promise<void> {
+  await downloadExcel('/reports/expired-stock/', { ...branchParam(filters.branchId) }, 'mermas-por-caducidad.xlsx')
+}
+
+export async function exportCashShiftClosures(filters: DateRangeReportFilters): Promise<void> {
+  await downloadExcel(
+    '/reports/cash-shift-closures/',
+    { date_from: filters.dateFrom, date_to: filters.dateTo, ...branchParam(filters.branchId) },
+    'cierres-de-caja.xlsx',
+  )
 }

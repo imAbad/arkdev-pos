@@ -11,6 +11,12 @@ import { useNavigation } from '@/App'
 import { t } from '@/i18n'
 import { listBranches } from '@/services/api/tenantsApi'
 import {
+  exportCashShiftClosures,
+  exportExpiredStock,
+  exportInventoryValuation,
+  exportSalesByCashier,
+  exportSalesByCategory,
+  exportSalesByProduct,
   getCashShiftClosures,
   getExpiredStock,
   getInventoryValuation,
@@ -72,6 +78,8 @@ export function ReportsScreen() {
   const [data, setData] = useState<ReportData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
 
   useEffect(() => {
     listBranches().then(setBranches)
@@ -116,6 +124,33 @@ export function ReportsScreen() {
       setData(null)
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Punto 11: solo "los 4 reportes existentes" antes de esta sesión
+  // tienen exportador (product/category/cashier comparten un mismo
+  // endpoint, cuentan como uno) — "Próximos a caducar" (punto 4, agregado
+  // en esta misma sesión) queda sin botón de exportar a propósito.
+  const exporters: Partial<Record<ReportKey, () => Promise<void>>> = {
+    product: () => exportSalesByProduct({ dateFrom, dateTo, branchId }),
+    category: () => exportSalesByCategory({ dateFrom, dateTo, branchId }),
+    cashier: () => exportSalesByCashier({ dateFrom, dateTo, branchId }),
+    inventory: () => exportInventoryValuation({ branchId }),
+    expired: () => exportExpiredStock({ branchId }),
+    closures: () => exportCashShiftClosures({ dateFrom, dateTo, branchId }),
+  }
+
+  async function handleExport() {
+    const exporter = exporters[activeReport]
+    if (!exporter) return
+    setExporting(true)
+    setExportError(null)
+    try {
+      await exporter()
+    } catch (err) {
+      setExportError(apiErrorMessage(err, t.reports.exportErrorGeneric))
+    } finally {
+      setExporting(false)
     }
   }
 
@@ -207,7 +242,19 @@ export function ReportsScreen() {
             <Button type="button" variant="confirm" onClick={() => void runQuery()}>
               {t.reports.apply}
             </Button>
+
+            {exporters[activeReport] && (
+              <Button type="button" variant="neutral" disabled={exporting} onClick={() => void handleExport()}>
+                {exporting ? t.reports.exporting : t.reports.exportToExcel}
+              </Button>
+            )}
           </div>
+
+          {exportError && (
+            <p role="alert" className="mt-3 text-lg font-medium text-cancel">
+              {exportError}
+            </p>
+          )}
         </Card>
 
         <Card>

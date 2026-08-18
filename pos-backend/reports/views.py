@@ -4,6 +4,7 @@ from rest_framework.views import APIView
 
 from core.permissions import IsAdministratorOrSupervisor
 from reports import services
+from reports.excel import build_excel_response
 from reports.serializers import (
     BranchOnlyReportQuerySerializer,
     DateRangeReportQuerySerializer,
@@ -11,6 +12,46 @@ from reports.serializers import (
     SalesByProductQuerySerializer,
 )
 from tenants.models import Branch, UserProfile
+
+# Punto 11: exportación a Excel de "los 4 reportes existentes" (los que ya
+# estaban en ReportsScreen antes de esta sesión: ventas por producto/
+# categoría/cajero -un solo endpoint con group_by-, valuación de
+# inventario, mermas por caducidad y cierres de caja). near-expiry-stock
+# (punto 4 de esta misma sesión) y sales-by-payment-method (nunca tuvo tab
+# en el frontend, gap real encontrado al revisar este archivo -no es scope
+# de este punto arreglarlo-) se quedan fuera a propósito, no por olvido.
+_SALES_BY_PRODUCT_COLUMNS = {
+    'product': [('Producto', 'product_name'), ('Categoría', 'category_name'), ('Cantidad vendida', 'quantity_sold'), ('Ingreso', 'revenue'), ('IVA', 'tax')],
+    'category': [('Categoría', 'category_name'), ('Cantidad vendida', 'quantity_sold'), ('Ingreso', 'revenue'), ('IVA', 'tax')],
+    'cashier': [('Cajero', 'cashier_email'), ('Cantidad vendida', 'quantity_sold'), ('Ingreso', 'revenue'), ('IVA', 'tax')],
+}
+
+_INVENTORY_VALUATION_COLUMNS = [
+    ('Producto', 'product_name'), ('Categoría', 'category_name'), ('Cantidad', 'quantity'), ('Valor', 'valuation'),
+]
+
+_EXPIRED_STOCK_COLUMNS = [
+    ('Producto', 'product_name'), ('Lote', 'batch_number'), ('Sucursal', 'branch_name'),
+    ('Caducó', 'expiration_date'), ('Cantidad', 'quantity'), ('Valor', 'valuation'),
+]
+
+_CASH_SHIFT_CLOSURES_COLUMNS = [
+    ('Sucursal', 'branch_name'), ('Caja', 'register_name'), ('Cajero', 'user_email'),
+    ('Apertura', 'opened_at'), ('Cierre', 'closed_at'), ('Fondo inicial', 'opening_balance'),
+    ('Efectivo esperado', 'expected_closing_balance'), ('Efectivo contado', 'actual_closing_balance'),
+    ('Diferencia efectivo', 'cash_difference'), ('Vouchers esperados', 'expected_voucher_total'),
+    ('Vouchers contados', 'actual_voucher_total'), ('Diferencia vouchers', 'voucher_difference'),
+]
+
+
+def _wants_excel(request):
+    # OJO: no se llama `format` a propósito — DRF reserva ese nombre de
+    # query param (URL_FORMAT_OVERRIDE) para su propia negociación de
+    # contenido y devuelve un 404 genérico ("No encontrado") ANTES de que
+    # el código de esta vista llegue a correr si el valor no matchea
+    # ningún renderer registrado (bug real encontrado escribiendo el
+    # primer test de este punto, con format=xlsx).
+    return request.query_params.get('export') == 'xlsx'
 
 
 def _resolve_branch(request, branch_id):
@@ -61,6 +102,12 @@ class SalesByProductReportView(APIView):
             cashier=cashier,
             group_by=data['group_by'],
         )
+        if _wants_excel(request):
+            return build_excel_response(
+                filename='ventas-por-producto.xlsx',
+                columns=_SALES_BY_PRODUCT_COLUMNS[data['group_by']],
+                rows=rows,
+            )
         return Response(rows)
 
 
@@ -76,6 +123,10 @@ class InventoryValuationReportView(APIView):
             return error_response
 
         rows = services.inventory_valuation(company=request.user.profile.company, branch=branch)
+        if _wants_excel(request):
+            return build_excel_response(
+                filename='valuacion-de-inventario.xlsx', columns=_INVENTORY_VALUATION_COLUMNS, rows=rows,
+            )
         return Response(rows)
 
 
@@ -91,6 +142,10 @@ class ExpiredStockReportView(APIView):
             return error_response
 
         rows = services.expired_stock_report(company=request.user.profile.company, branch=branch)
+        if _wants_excel(request):
+            return build_excel_response(
+                filename='mermas-por-caducidad.xlsx', columns=_EXPIRED_STOCK_COLUMNS, rows=rows,
+            )
         return Response(rows)
 
 
@@ -130,6 +185,10 @@ class CashShiftClosuresReportView(APIView):
             date_to=data['date_to'],
             branch=branch,
         )
+        if _wants_excel(request):
+            return build_excel_response(
+                filename='cierres-de-caja.xlsx', columns=_CASH_SHIFT_CLOSURES_COLUMNS, rows=rows,
+            )
         return Response(rows)
 
 

@@ -191,6 +191,9 @@ export const es = {
     colVoucherDifference: 'Diferencia vouchers',
     expiredStockNote: 'Lotes ya caducados que todavía tienen existencia sin vender — represéntalo como pérdida y decide si se dan de baja.',
     total: 'Total',
+    exportToExcel: 'Exportar a Excel',
+    exporting: 'Exportando…',
+    exportErrorGeneric: 'No se pudo exportar el reporte. Intenta de nuevo.',
   },
   modules: {
     navLink: 'Módulos',

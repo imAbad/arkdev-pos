@@ -17,6 +17,13 @@ const SALES_BY_PRODUCT_URL = `${BASE}/reports/sales-by-product/`
 const INVENTORY_VALUATION_URL = `${BASE}/reports/inventory-valuation/`
 const NEAR_EXPIRY_URL = `${BASE}/reports/near-expiry-stock/`
 
+// jsdom no implementa createObjectURL/revokeObjectURL — se agregan al
+// URL real (no se reemplaza el global: axios usa `new URL(...)` para
+// resolver la request, reemplazar el constructor completo rompe eso)
+// para poder probar el flujo real de descarga (punto 11).
+URL.createObjectURL = vi.fn(() => 'blob:mock')
+URL.revokeObjectURL = vi.fn()
+
 function renderReportsScreen(closeReports = vi.fn()) {
   const auth = fakeAuthValue({ profile: makeProfile({ role: 'ADMINISTRADOR' }) })
   return render(
@@ -147,5 +154,71 @@ describe('ReportsScreen', () => {
     renderReportsScreen()
 
     expect(await screen.findByText('Esta acción requiere el rol de administrador.')).toBeInTheDocument()
+  })
+})
+
+describe('ReportsScreen — exportar a Excel (punto 11, solo los 4 reportes ya existentes)', () => {
+  it('el botón de exportar dispara la descarga con export=xlsx', async () => {
+    let capturedParams: URLSearchParams | null = null
+    server.use(
+      http.get(BRANCHES_URL, () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+      http.get(SALES_BY_PRODUCT_URL, ({ request }) => {
+        const url = new URL(request.url)
+        if (url.searchParams.get('export') === 'xlsx') {
+          capturedParams = url.searchParams
+          return HttpResponse.arrayBuffer(new ArrayBuffer(8), {
+            headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+          })
+        }
+        return HttpResponse.json([])
+      }),
+    )
+
+    const user = userEvent.setup()
+    renderReportsScreen()
+    await screen.findByText(t.reports.empty)
+
+    await user.click(screen.getByRole('button', { name: t.reports.exportToExcel }))
+
+    expect(await screen.findByRole('button', { name: t.reports.exportToExcel })).toBeInTheDocument()
+    expect(capturedParams).not.toBeNull()
+    expect(capturedParams!.get('group_by')).toBe('product')
+  })
+
+  it('no muestra el botón de exportar en la pestaña "Próximos a caducar" (no es uno de los 4 reportes existentes)', async () => {
+    server.use(
+      http.get(BRANCHES_URL, () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+      http.get(SALES_BY_PRODUCT_URL, () => HttpResponse.json([])),
+      http.get(NEAR_EXPIRY_URL, () => HttpResponse.json([])),
+    )
+
+    const user = userEvent.setup()
+    renderReportsScreen()
+    await screen.findByText(t.reports.empty)
+
+    await user.click(screen.getByRole('button', { name: t.reports.tabNearExpiry }))
+
+    expect(screen.queryByRole('button', { name: t.reports.exportToExcel })).not.toBeInTheDocument()
+  })
+
+  it('muestra un mensaje legible si la exportación falla', async () => {
+    server.use(
+      http.get(BRANCHES_URL, () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+      http.get(SALES_BY_PRODUCT_URL, ({ request }) => {
+        const url = new URL(request.url)
+        if (url.searchParams.get('export') === 'xlsx') {
+          return HttpResponse.json({ detail: 'Esta acción requiere el rol de administrador.' }, { status: 403 })
+        }
+        return HttpResponse.json([])
+      }),
+    )
+
+    const user = userEvent.setup()
+    renderReportsScreen()
+    await screen.findByText(t.reports.empty)
+
+    await user.click(screen.getByRole('button', { name: t.reports.exportToExcel }))
+
+    expect(await screen.findByText(t.reports.exportErrorGeneric)).toBeInTheDocument()
   })
 })
