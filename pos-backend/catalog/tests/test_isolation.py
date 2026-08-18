@@ -235,6 +235,105 @@ class RelatedProductsApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
 
+class CatalogInventoryPermissionBoundaryTests(APITestCase):
+    """Punto 8: CRUD de catálogo/inventario dividido en dos niveles —
+    producto/precio/catálogo (Category, Supplier, Product) exclusivo de
+    ADMINISTRADOR para escribir (cualquiera lee, ver
+    test_plain_cajero_can_read_products_but_not_create_one arriba para el
+    caso de Product); lotes/ajustes de stock (Batch) para
+    ADMINISTRADOR o Supervisor, ni siquiera lectura para un cajero plano
+    (a diferencia de Product, ningún flujo de venta necesita leer Batch
+    directo por API)."""
+
+    def setUp(self):
+        self.tenant = create_full_tenant(
+            'Abarrotes Don Chuy', 'Centro', 'admin@donchuy.test', role=UserProfile.Role.ADMINISTRADOR,
+        )
+        self.category = create_category(self.tenant['company'])
+        self.supplier = create_supplier(self.tenant['company'])
+        self.product = create_product(self.tenant['company'], category=self.category)
+        self.batch = create_batch(self.product, self.tenant['branch'])
+
+        self.cajero, _ = create_user_with_profile(
+            'cajero@donchuy.test', self.tenant['branch'], capabilities={'handles_cash': True},
+        )
+        self.supervisor, _ = create_user_with_profile(
+            'supervisor@donchuy.test', self.tenant['branch'], capabilities={'can_authorize_exceptions': True},
+        )
+
+    def _auth(self, user):
+        self.client.force_authenticate(user=user)
+
+    def test_administrador_can_create_category(self):
+        self._auth(self.tenant['user'])
+        response = self.client.post('/api/v1/categories/', {'name': 'Lácteos'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_plain_cajero_can_read_categories_but_not_create_one(self):
+        self._auth(self.cajero)
+        get_response = self.client.get('/api/v1/categories/')
+        self.assertEqual(get_response.status_code, status.HTTP_200_OK)
+
+        post_response = self.client.post('/api/v1/categories/', {'name': 'Intento no autorizado'}, format='json')
+        self.assertEqual(post_response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_supervisor_cannot_create_category(self):
+        # Categoría/proveedor son catálogo, no inventario — el gate es
+        # ADMINISTRADOR estricto, un Supervisor NO pasa aquí (a
+        # diferencia de Batch, ver tests de abajo).
+        self._auth(self.supervisor)
+        response = self.client.post('/api/v1/categories/', {'name': 'Intento supervisor'}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_plain_cajero_can_read_suppliers_but_not_create_one(self):
+        self._auth(self.cajero)
+        get_response = self.client.get('/api/v1/suppliers/')
+        self.assertEqual(get_response.status_code, status.HTTP_200_OK)
+
+        post_response = self.client.post('/api/v1/suppliers/', {'name': 'Intento no autorizado'}, format='json')
+        self.assertEqual(post_response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_administrador_can_create_batch(self):
+        self._auth(self.tenant['user'])
+        response = self.client.post(
+            '/api/v1/batches/',
+            {
+                'product': self.product.id, 'branch': self.tenant['branch'].id,
+                'batch_number': 'ADMIN-L1', 'initial_quantity': 10, 'expiration_date': '2030-01-01',
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_supervisor_can_create_batch(self):
+        self._auth(self.supervisor)
+        response = self.client.post(
+            '/api/v1/batches/',
+            {
+                'product': self.product.id, 'branch': self.tenant['branch'].id,
+                'batch_number': 'SUP-L1', 'initial_quantity': 10, 'expiration_date': '2030-01-01',
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_plain_cajero_cannot_read_or_create_batches(self):
+        self._auth(self.cajero)
+        get_response = self.client.get('/api/v1/batches/')
+        self.assertEqual(get_response.status_code, status.HTTP_403_FORBIDDEN)
+
+        post_response = self.client.post(
+            '/api/v1/batches/',
+            {
+                'product': self.product.id, 'branch': self.tenant['branch'].id,
+                'batch_number': 'CAJERO-L1', 'initial_quantity': 10, 'expiration_date': '2030-01-01',
+            },
+            format='json',
+        )
+        self.assertEqual(post_response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertFalse(Batch.objects.filter(batch_number='CAJERO-L1').exists())
+
+
 class ProductNearestBatchExpirationTests(APITestCase):
     """Punto 4: el aviso de caducidad próxima en el buscador de venta viene
     de este campo — se prueba aquí, en el mismo endpoint que ProductSearch

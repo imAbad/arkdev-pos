@@ -4,19 +4,25 @@ from rest_framework.permissions import IsAuthenticated
 from catalog.models import Batch, Category, Product, Supplier
 from catalog.serializers import BatchSerializer, CategorySerializer, ProductSerializer, SupplierSerializer
 from core.mixins import TenantScopedViewSetMixin
-from core.permissions import IsAdministratorOrReadOnly
+from core.permissions import IsAdministratorOrReadOnly, IsAdministratorOrSupervisor
 
 
 class CategoryViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
-    permission_classes = [IsAuthenticated]
+    # Punto 8: estructura de catálogo (categorías/proveedores), igual que
+    # Product — cualquiera lee, solo ADMINISTRADOR escribe. Bug real
+    # encontrado al revisar este viewset para el punto 8: no tenía NINGÚN
+    # gate propio, heredaba solo IsAuthenticated — cualquier cajero podía
+    # crear/borrar categorías (mismo patrón de gap ya encontrado y
+    # corregido en CompanySettingsViewSet/ProductViewSet, puntos 3 y 5).
+    permission_classes = [IsAuthenticated, IsAdministratorOrReadOnly]
 
 
 class SupplierViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
     queryset = Supplier.objects.all()
     serializer_class = SupplierSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsAdministratorOrReadOnly]
 
 
 class ProductViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
@@ -38,4 +44,14 @@ class ProductViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
 class BatchViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
     queryset = Batch.objects.all()
     serializer_class = BatchSerializer
-    permission_classes = [IsAuthenticated]
+    # Punto 8: lotes/existencias (nuevos lotes, ajustes de stock) son
+    # operación de inventario — ADMINISTRADOR o Supervisor (CAJERO con
+    # can_authorize_exceptions), no cualquier cajero. A diferencia de
+    # Product, ningún flujo de venta llama a este endpoint directo (el
+    # descuento de stock en una venta pasa por
+    # sales.services/catalog.services server-side, no por
+    # POST/PATCH /batches/), así que no hay necesidad de dejar lectura
+    # abierta a todos como con Product — mismo gate en lectura y
+    # escritura. Otro gap real encontrado igual que Category/Supplier:
+    # este viewset solo tenía IsAuthenticated.
+    permission_classes = [IsAuthenticated, IsAdministratorOrSupervisor]
