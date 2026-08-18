@@ -2,15 +2,83 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.auth import authenticate
+from django.db import transaction
 from django.utils import timezone
 
 from audit.services import log_action
-from tenants.models import SupervisorAuthorization
+from tenants.models import SupervisorAuthorization, User, UserProfile
 
 
 class AuthorizationError(Exception):
     """Error de regla de negocio al solicitar o consumir una autorización
     de supervisor (-> 403)."""
+
+
+class UserManagementError(Exception):
+    """Error de regla de negocio al crear/desactivar un usuario del tenant
+    (-> 400)."""
+
+
+def create_tenant_user(*, email, password, branch, role, capabilities=None, actor=None):
+    """Crea el `User` (login) y su `UserProfile` (branch/role/capabilities)
+    en una sola transacción — no tiene sentido que exista el uno sin el
+    otro (ver UserProfile.save(): company se deriva de branch, así que
+    basta con pasar un branch ya acotado al tenant del actor -mismo
+    criterio anti-IDOR que reports._resolve_branch, aplicado vía
+    TenantScopedFieldsMixin en el serializer-)."""
+    with transaction.atomic():
+        user = User.objects.create_user(email=email, password=password)
+        profile = UserProfile.objects.create(
+            user=user, branch=branch, role=role, capabilities=capabilities or {},
+        )
+    log_action(
+        company=profile.company, user=actor, action='user_management.created',
+        instance=profile, changes={'email': email, 'role': role},
+    )
+    return profile
+
+
+def deactivate_user(*, target_profile, actor=None):
+    """Desactiva el login del usuario (`User.is_active=False` — SimpleJWT
+    rechaza tokens de un usuario inactivo en su próxima verificación, ver
+    JWTAuthentication.get_user()). Nunca un DELETE: el historial de ventas/
+    turnos/auditoría sigue apuntando a este usuario, borrarlo rompería esas
+    referencias o las dejaría huérfanas.
+
+    Salvaguarda real (punto 9, el de mayor riesgo de esta ronda): si
+    `target_profile` es el ÚLTIMO ADMINISTRADOR activo del tenant, se
+    rechaza — sin importar quién lo intente, no solo si es el propio
+    admin desactivándose a sí mismo. Dejar un tenant sin ningún
+    administrador activo es un lockout total (nadie puede volver a dar de
+    alta/reactivar a nadie), así que la regla protege el riesgo real, no
+    solo el caso literal de auto-desactivación.
+    """
+    if target_profile.role == UserProfile.Role.ADMINISTRADOR:
+        other_active_admins_exist = (
+            UserProfile.objects.filter(
+                company=target_profile.company, role=UserProfile.Role.ADMINISTRADOR, user__is_active=True,
+            )
+            .exclude(pk=target_profile.pk)
+            .exists()
+        )
+        if not other_active_admins_exist:
+            raise UserManagementError('No puedes desactivar al último administrador activo del negocio.')
+
+    target_profile.user.is_active = False
+    target_profile.user.save(update_fields=['is_active'])
+    log_action(
+        company=target_profile.company, user=actor, action='user_management.deactivated',
+        instance=target_profile, changes={'email': target_profile.user.email},
+    )
+
+
+def reactivate_user(*, target_profile, actor=None):
+    target_profile.user.is_active = True
+    target_profile.user.save(update_fields=['is_active'])
+    log_action(
+        company=target_profile.company, user=actor, action='user_management.reactivated',
+        instance=target_profile, changes={'email': target_profile.user.email},
+    )
 
 
 def request_supervisor_authorization(*, requesting_user, email, password, reason=''):

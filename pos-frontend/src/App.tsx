@@ -5,6 +5,7 @@ import { OpenShiftScreen } from '@/features/shift/OpenShiftScreen'
 import { SaleScreen } from '@/features/sales/SaleScreen'
 import { ReportsScreen } from '@/features/reports/ReportsScreen'
 import { ModuleSettingsScreen } from '@/features/admin/ModuleSettingsScreen'
+import { UserManagementScreen } from '@/features/admin/UserManagementScreen'
 import { RelatedProductsScreen } from '@/features/catalog/RelatedProductsScreen'
 import { LowStockScreen } from '@/features/catalog/LowStockScreen'
 import { getCurrentShift } from '@/services/api/salesApi'
@@ -19,7 +20,7 @@ import type { CashShift } from '@/types/api'
 // tienda — puntos 3/8/9/12) siguen el mismo patrón por ahora. El punto 13
 // de esta sesión reemplaza esto por un router real con sidebar — no antes,
 // para no reescribir esto cinco veces mientras las pantallas se construyen.
-export type ViewKey = 'main' | 'reports' | 'modules' | 'catalog' | 'low-stock'
+export type ViewKey = 'main' | 'reports' | 'modules' | 'catalog' | 'low-stock' | 'users'
 
 export interface NavigationContextValue {
   view: ViewKey
@@ -31,6 +32,8 @@ export interface NavigationContextValue {
   closeCatalog: () => void
   openLowStock: () => void
   closeLowStock: () => void
+  openUsers: () => void
+  closeUsers: () => void
 }
 
 // Sin valor por default null-y-throw (a diferencia de useAuth): AppHeader
@@ -50,6 +53,8 @@ export const NavigationContext = createContext<NavigationContextValue>({
   closeCatalog: () => {},
   openLowStock: () => {},
   closeLowStock: () => {},
+  openUsers: () => {},
+  closeUsers: () => {},
 })
 
 export function useNavigation(): NavigationContextValue {
@@ -77,6 +82,8 @@ function AppScreens() {
     closeCatalog: () => setView('main'),
     openLowStock: () => setView('low-stock'),
     closeLowStock: () => setView('main'),
+    openUsers: () => setView('users'),
+    closeUsers: () => setView('main'),
   }
 
   return <NavigationContext.Provider value={navigationValue}>{renderScreen()}</NavigationContext.Provider>
@@ -104,6 +111,10 @@ function AppScreens() {
 
     if (view === 'low-stock') {
       return <LowStockScreen />
+    }
+
+    if (view === 'users') {
+      return <UserManagementScreen />
     }
 
     if (shift === 'loading') {

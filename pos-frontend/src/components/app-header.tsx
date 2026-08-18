@@ -10,11 +10,12 @@ import { t } from '@/i18n'
  * identidad/navegación, nunca para botones de acción (ver index.css). */
 export function AppHeader() {
   const { companySettings, branch, profile, logout } = useAuth()
-  const { view, openReports, openModules, openCatalog, openLowStock } = useNavigation()
+  const { view, openReports, openModules, openCatalog, openLowStock, openUsers } = useNavigation()
   const businessName = companySettings?.business_name?.trim() || t.common.appName
   const showReportsLink = view === 'main' && isAdministratorOrSupervisor(profile)
   const showModulesLink = view === 'main' && isAdministrator(profile)
   const showCatalogLink = view === 'main' && isAdministrator(profile)
+  const showUsersLink = view === 'main' && isAdministrator(profile)
 
   // Punto 7: cualquier usuario que abre turno debe ver esto, no solo
   // admin/supervisor — mismo gate que el endpoint (HandlesCash). AppHeader
@@ -54,6 +55,11 @@ export function AppHeader() {
         {showCatalogLink && (
           <Button variant="neutral" size="compact" onClick={openCatalog}>
             {t.relatedProducts.navLink}
+          </Button>
+        )}
+        {showUsersLink && (
+          <Button variant="neutral" size="compact" onClick={openUsers}>
+            {t.users.navLink}
           </Button>
         )}
         {lowStockCount > 0 && view !== 'low-stock' && (

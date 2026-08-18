@@ -1,5 +1,5 @@
 import { apiClient } from '@/lib/api-client'
-import type { Branch, CompanySettings, Paginated, UserProfile } from '@/types/api'
+import type { Branch, CompanySettings, Paginated, Role, UserProfile } from '@/types/api'
 
 export async function getMyProfile(): Promise<UserProfile> {
   const response = await apiClient.get<UserProfile>('/user-profiles/me/')
@@ -34,5 +34,43 @@ export async function updateCompanySettings(
   patch: Partial<Pick<CompanySettings, 'business_name' | 'accent_color' | 'enabled_modules'>>,
 ): Promise<CompanySettings> {
   const response = await apiClient.patch<CompanySettings>(`/company-settings/${id}/`, patch)
+  return response.data
+}
+
+// Punto 9 — gestión de usuarios, ADMINISTRADOR exclusivo (ver
+// core.permissions.IsAdministrator en UserProfileViewSet).
+export async function listUsers(): Promise<UserProfile[]> {
+  const response = await apiClient.get<Paginated<UserProfile>>('/user-profiles/')
+  return response.data.results
+}
+
+export interface CreateUserInput {
+  email: string
+  password: string
+  branch: number
+  role: Role
+  capabilities?: UserProfile['capabilities']
+}
+
+export async function createUser(input: CreateUserInput): Promise<UserProfile> {
+  const response = await apiClient.post<UserProfile>('/user-profiles/', input)
+  return response.data
+}
+
+export async function updateUser(
+  id: number,
+  patch: Partial<Pick<UserProfile, 'branch' | 'role' | 'capabilities'>>,
+): Promise<UserProfile> {
+  const response = await apiClient.patch<UserProfile>(`/user-profiles/${id}/`, patch)
+  return response.data
+}
+
+export async function deactivateUser(id: number): Promise<UserProfile> {
+  const response = await apiClient.post<UserProfile>(`/user-profiles/${id}/deactivate/`)
+  return response.data
+}
+
+export async function reactivateUser(id: number): Promise<UserProfile> {
+  const response = await apiClient.post<UserProfile>(`/user-profiles/${id}/reactivate/`)
   return response.data
 }

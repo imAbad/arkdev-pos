@@ -52,6 +52,18 @@ describe('AppHeader — link de Relacionados (punto 5, exclusivo de ADMINISTRADO
   })
 })
 
+describe('AppHeader — link de Usuarios (punto 9, exclusivo de ADMINISTRADOR sin excepción)', () => {
+  it('lo muestra a un ADMINISTRADOR', () => {
+    renderHeader(makeProfile({ role: 'ADMINISTRADOR' }))
+    expect(screen.getByRole('button', { name: t.users.navLink })).toBeInTheDocument()
+  })
+
+  it('NO lo muestra a un Supervisor (CAJERO con can_authorize_exceptions)', () => {
+    renderHeader(makeProfile({ role: 'CAJERO', capabilities: { can_authorize_exceptions: true } }))
+    expect(screen.queryByRole('button', { name: t.users.navLink })).not.toBeInTheDocument()
+  })
+})
+
 describe('AppHeader — badge de stock bajo (punto 7: visible a cualquier usuario, no solo admin/supervisor)', () => {
   it('lo muestra a un CAJERO plano cuando hay productos con stock bajo', async () => {
     server.use(

@@ -18,6 +18,7 @@ export type Role = 'CAJERO' | 'ADMINISTRADOR'
 export interface UserProfile {
   id: number
   email: string
+  is_active: boolean
   branch: number
   role: Role
   capabilities: {

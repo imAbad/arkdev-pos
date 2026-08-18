@@ -36,6 +36,7 @@ export function makeProfile(overrides: Partial<UserProfile> = {}): UserProfile {
   return {
     id: 1,
     email: 'cajero@donchuy.test',
+    is_active: true,
     branch: 1,
     role: 'CAJERO',
     capabilities: { handles_cash: true },
