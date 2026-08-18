@@ -34,6 +34,7 @@ def make_sale(
     payment_method='CASH',
     discount_amount=Decimal('0'),
     client_uuid=None,
+    client=None,
 ):
     """Atajo de una línea + un pago por el total exacto — el caso más común
     en los tests de sales."""
@@ -43,6 +44,7 @@ def make_sale(
 
     return create_sale(
         cash_shift=cash_shift,
+        client=client,
         details=[{'product': product, 'batch': batch, 'quantity': quantity, 'unit_price': unit_price}],
         payments=[{'method': payment_method, 'amount': total}],
         discount_amount=discount_amount,

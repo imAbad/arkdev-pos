@@ -11,6 +11,8 @@ from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 
 from catalog.tests.factories import create_batch, create_product
+from customers.models import CreditMovement
+from customers.tests.factories import create_client
 from sales.models import CashShift, Payment, Sale, SaleDetail
 from sales.services import SaleError, close_shift, create_sale
 from sales.tests.factories import create_checkout_context, make_sale
@@ -241,6 +243,74 @@ class CreateSaleWithBatchTests(TestCase):
         batch.refresh_from_db()
         self.assertEqual(batch.current_quantity, 2)
         self.assertEqual(Sale.objects.count(), 0)
+
+
+class CreateSaleWithCreditTests(TestCase):
+    """Payment.method=CREDIT conectado con customers — Sale.client, antes
+    pospuesto, ya existe (punto 5 del orden de construcción)."""
+
+    def setUp(self):
+        self.ctx = create_checkout_context(tax_rate=Decimal('0'))
+
+    def test_credit_payment_without_client_is_rejected(self):
+        with self.assertRaises(SaleError):
+            make_sale(self.ctx['shift'], self.ctx['product'], unit_price=Decimal('50'), payment_method='CREDIT')
+        self.assertEqual(Sale.objects.count(), 0)
+
+    def test_credit_payment_charges_the_client_credit_account(self):
+        client = create_client(self.ctx['company'], credit_limit=Decimal('200'))
+        sale = make_sale(
+            self.ctx['shift'], self.ctx['product'], unit_price=Decimal('50'),
+            payment_method='CREDIT', client=client,
+        )
+        client.credit_account.refresh_from_db()
+        self.assertEqual(client.credit_account.balance, Decimal('50.00'))
+
+        movement = client.credit_account.movements.get()
+        self.assertEqual(movement.type, CreditMovement.Type.CARGO)
+        self.assertEqual(movement.amount, Decimal('50.00'))
+        self.assertEqual(movement.sale, sale)
+
+    def test_credit_payment_exceeding_credit_limit_rolls_back_the_whole_sale(self):
+        client = create_client(self.ctx['company'], credit_limit=Decimal('10'))
+        batch = create_batch(self.ctx['product'], self.ctx['branch'], initial_quantity=5)
+
+        with self.assertRaises(SaleError):
+            create_sale(
+                cash_shift=self.ctx['shift'],
+                client=client,
+                details=[{
+                    'product': self.ctx['product'], 'batch': batch,
+                    'quantity': Decimal('3'), 'unit_price': Decimal('50'),
+                }],
+                payments=[{'method': 'CREDIT', 'amount': Decimal('150')}],
+            )
+
+        # Rollback completo: ni la venta, ni el descuento de stock, ni el
+        # cargo a crédito deben quedar aplicados.
+        self.assertEqual(Sale.objects.count(), 0)
+        batch.refresh_from_db()
+        self.assertEqual(batch.current_quantity, 5)
+        client.credit_account.refresh_from_db()
+        self.assertEqual(client.credit_account.balance, Decimal('0'))
+        self.assertEqual(client.credit_account.movements.count(), 0)
+
+    def test_mixed_cash_and_credit_payment_only_charges_the_credit_portion(self):
+        client = create_client(self.ctx['company'], credit_limit=Decimal('200'))
+        create_sale(
+            cash_shift=self.ctx['shift'],
+            client=client,
+            details=[{
+                'product': self.ctx['product'], 'batch': None,
+                'quantity': Decimal('1'), 'unit_price': Decimal('100'),
+            }],
+            payments=[
+                {'method': 'CASH', 'amount': Decimal('60')},
+                {'method': 'CREDIT', 'amount': Decimal('40')},
+            ],
+        )
+        client.credit_account.refresh_from_db()
+        self.assertEqual(client.credit_account.balance, Decimal('40.00'))
 
 
 class CreateSaleConcurrencyTests(TransactionTestCase):

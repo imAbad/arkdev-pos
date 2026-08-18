@@ -12,6 +12,7 @@ from rest_framework.test import APITestCase
 
 from audit.models import AuditLog
 from catalog.tests.factories import create_product
+from customers.tests.factories import create_client
 from sales.models import CashRegister, CashShift
 from sales.services import ShiftError, ShiftPermissionError, close_shift, open_shift
 from sales.tests.factories import create_cash_register, make_sale
@@ -187,7 +188,11 @@ class CloseShiftServiceTests(TestCase):
     def test_credit_sales_count_in_neither_cash_nor_voucher_expected(self):
         # Fiado no mueve dinero en la caja al momento de la venta.
         product = create_product(self.tenant['company'], tax_rate=Decimal('0'))
-        make_sale(self.shift, product, quantity=Decimal('1'), unit_price=Decimal('99'), payment_method='CREDIT')
+        client = create_client(self.tenant['company'])
+        make_sale(
+            self.shift, product, quantity=Decimal('1'), unit_price=Decimal('99'),
+            payment_method='CREDIT', client=client,
+        )
 
         closed = close_shift(shift=self.shift, closing_user=self.tenant['user'], actual_closing_balance=Decimal('100'))
         self.assertEqual(closed.expected_closing_balance, Decimal('100'))  # solo apertura

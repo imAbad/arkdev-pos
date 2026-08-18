@@ -6,6 +6,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from catalog.tests.factories import create_batch
+from customers.tests.factories import create_client
 from sales.models import Sale
 from sales.tests.factories import create_checkout_context, make_sale
 from tenants.tests.factories import create_user_with_profile
@@ -91,6 +92,14 @@ class SaleApiTests(APITestCase):
         }]
         response = self.client.post('/api/v1/sales/create-sale/', payload, format='json')
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(Sale.objects.count(), 0)
+
+    def test_create_sale_rejects_client_from_other_tenant(self):
+        foreign_client = create_client(self.ctx_b['company'])
+        self._auth(self.ctx_a['user'])
+        payload = self._checkout_payload(self.ctx_a, client=foreign_client.id)
+        response = self.client.post('/api/v1/sales/create-sale/', payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(Sale.objects.count(), 0)
 
     def test_user_without_handles_cash_capability_is_denied(self):
