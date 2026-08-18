@@ -1,6 +1,7 @@
 import secrets
 
 from django.contrib.auth.models import AbstractUser
+from django.core.validators import RegexValidator
 from django.db import models
 from django.utils import timezone
 
@@ -50,9 +51,18 @@ class Branch(BaseTenantModel):
         return f'{self.name} ({self.company.name})'
 
 
+def company_logo_upload_path(instance, filename):
+    # Mismo criterio que catalog.Product.image: prefijo por tenant, listo
+    # para Azure Blob vía django-storages aunque hoy no esté activo (ver
+    # arquitectura_tecnica_pos.md §4.3).
+    return f'tenant_{instance.company_id}/branding/{filename}'
+
+
 class CompanySettings(BaseTenantModel):
     """Feature flags por tenant — patrón confirmado y reutilizado tal cual
-    de pharma_core (ver decisiones_post_auditoria.md #2)."""
+    de pharma_core (ver decisiones_post_auditoria.md #2). También la
+    personalización visual mínima del tenant (punto 7, arranque de
+    frontend): nombre a mostrar, logo, color de marca."""
 
     company = models.OneToOneField(
         'tenants.Company',
@@ -60,6 +70,16 @@ class CompanySettings(BaseTenantModel):
         related_name='settings',
     )
     enabled_modules = models.JSONField(default=dict, blank=True)
+
+    # business_name puede diferir de Company.name (nombre legal/de
+    # registro) — este es el nombre que ve el cliente en la interfaz.
+    business_name = models.CharField(max_length=200, blank=True)
+    logo = models.ImageField(upload_to=company_logo_upload_path, null=True, blank=True)
+    accent_color = models.CharField(
+        max_length=7,
+        default='#1E5B94',
+        validators=[RegexValidator(r'^#[0-9A-Fa-f]{6}$', 'Debe ser un color hex de 6 dígitos, ej. #1E5B94.')],
+    )
 
     class Meta(BaseTenantModel.Meta):
         verbose_name_plural = 'company settings'

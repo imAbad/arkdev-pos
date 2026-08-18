@@ -13,7 +13,11 @@ class BranchSerializer(serializers.ModelSerializer):
 class CompanySettingsSerializer(serializers.ModelSerializer):
     class Meta:
         model = CompanySettings
-        fields = ['id', 'company', 'enabled_modules', 'created_at', 'updated_at']
+        fields = [
+            'id', 'company', 'enabled_modules',
+            'business_name', 'logo', 'accent_color',
+            'created_at', 'updated_at',
+        ]
         read_only_fields = ['company', 'created_at', 'updated_at']
 
 
