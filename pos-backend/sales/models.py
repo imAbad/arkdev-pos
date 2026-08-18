@@ -95,3 +95,123 @@ class CashShift(BaseTenantModel):
 
     def __str__(self):
         return f'Turno {self.id} · {self.cash_register.name} · {self.user.email}'
+
+
+class Sale(BaseTenantModel):
+    """Rediseñado desde cero (no extraído) — pago dividido, impuestos reales
+    por línea, e idempotencia para offline desde el modelo, aunque la cola
+    de sincronización no se construya todavía (arquitectura_tecnica_pos.md
+    §4.2 y §9 punto 4; decisión confirmada en la sesión de construcción).
+
+    `branch`/`cash_register` se guardan denormalizados además de
+    `cash_shift` (de donde se derivan en save()) — igual que el resto de
+    modelos con parent scoping en este proyecto, para poder reportar por
+    sucursal/caja sin tener que atravesar el join hasta el turno.
+
+    `client` (FK a customers.Client, para fiado) queda pendiente a
+    propósito: esa app todavía no existe (punto 5 del orden de
+    construcción, después de este). Payment.method=CREDIT ya existe como
+    choice, pero su contabilidad (cargar a CreditAccount) se conecta cuando
+    exista `customers` — no antes.
+    """
+
+    class Status(models.TextChoices):
+        COMPLETED = 'COMPLETED', 'Completada'
+        CANCELLED = 'CANCELLED', 'Cancelada'
+        REFUNDED = 'REFUNDED', 'Devuelta'
+
+    branch = models.ForeignKey('tenants.Branch', on_delete=models.PROTECT, related_name='sales')
+    cash_register = models.ForeignKey(CashRegister, on_delete=models.PROTECT, related_name='sales')
+    cash_shift = models.ForeignKey(CashShift, on_delete=models.PROTECT, related_name='sales')
+
+    # Idempotencia para offline: lo genera el cliente (POS offline), no el
+    # servidor — por eso sin default a nivel de modelo (sales.services.
+    # create_sale sí genera uno server-side si no llega, para no bloquear
+    # el flujo síncrono de hoy mientras la cola de sync no exista).
+    client_uuid = models.UUIDField(unique=True)
+    # Distinto de created_at (auto_now_add, reloj del servidor): lo declara
+    # el cliente — cuándo ocurrió la venta de verdad, no cuándo llegó al
+    # servidor (relevante en cuanto exista la cola offline).
+    occurred_at = models.DateTimeField()
+
+    subtotal = models.DecimalField(max_digits=12, decimal_places=2)
+    discount_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    # Suma de SaleDetail.tax_amount — ver la nota de diseño en SaleDetail
+    # sobre por qué el impuesto se calcula y guarda por línea, no solo aquí.
+    tax_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    total = models.DecimalField(max_digits=12, decimal_places=2)
+
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.COMPLETED)
+
+    def save(self, *args, **kwargs):
+        self.cash_register_id = self.cash_shift.cash_register_id
+        self.branch_id = self.cash_shift.cash_register.branch_id
+        self.company_id = self.cash_shift.company_id
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f'Venta {self.id} · {self.total}'
+
+
+class SaleDetail(BaseTenantModel):
+    """`batch` nullable a propósito: FEFO es opcional por producto
+    (Product.requires_batch), no obligatorio por línea de venta — cambio
+    clave respecto a pharma_core (decisiones_post_auditoria.md §3).
+
+    `tax_amount` se calcula y persiste por línea, no solo a nivel de Sale.
+    Decisión tomada en esta sesión: la especificación (§7) exige exenciones
+    tipo "alimentos básicos", es decir tasas de IVA distintas dentro de una
+    misma venta — sumar impuesto solo al total perdería esa granularidad.
+    `tax_rate_applied` congela `Product.tax_rate` al momento de la venta
+    (si el producto cambia de tasa después, no reescribe ventas pasadas).
+    """
+
+    sale = models.ForeignKey(Sale, on_delete=models.CASCADE, related_name='details')
+    product = models.ForeignKey('catalog.Product', on_delete=models.PROTECT, related_name='sale_details')
+    batch = models.ForeignKey(
+        'catalog.Batch', on_delete=models.PROTECT, related_name='sale_details', null=True, blank=True,
+    )
+
+    # Decimal desde ahora (no placeholder): KG/LITRO/GRAMO necesitan
+    # cantidad fraccionaria real (ej. 0.750 kg) — un IntegerField no
+    # alcanzaría y migrar el tipo de columna después es justo lo que
+    # arquitectura_tecnica_pos.md §4.3 ya pedía evitar para `image`. 3
+    # decimales cubre gramos como unidad mínima de kg/litro; PIEZA/PAQUETE/
+    # SERVICIO simplemente usan enteros representados como Decimal (3.000).
+    quantity = models.DecimalField(max_digits=10, decimal_places=3)
+    unit_price = models.DecimalField(max_digits=12, decimal_places=2)
+    tax_rate_applied = models.DecimalField(max_digits=5, decimal_places=2)
+    tax_amount = models.DecimalField(max_digits=12, decimal_places=2)
+
+    def save(self, *args, **kwargs):
+        self.company_id = self.sale.company_id
+        super().save(*args, **kwargs)
+
+    @property
+    def subtotal(self):
+        return self.quantity * self.unit_price
+
+    def __str__(self):
+        return f'{self.product.name} x{self.quantity}'
+
+
+class Payment(BaseTenantModel):
+    """Nuevo — habilita pago dividido (N registros por venta que suman el
+    total), no existía en pharma_core."""
+
+    class Method(models.TextChoices):
+        CASH = 'CASH', 'Efectivo'
+        CARD = 'CARD', 'Tarjeta'
+        TRANSFER = 'TRANSFER', 'Transferencia'
+        CREDIT = 'CREDIT', 'Crédito (fiado)'
+
+    sale = models.ForeignKey(Sale, on_delete=models.CASCADE, related_name='payments')
+    method = models.CharField(max_length=10, choices=Method.choices)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+
+    def save(self, *args, **kwargs):
+        self.company_id = self.sale.company_id
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f'{self.method} {self.amount}'

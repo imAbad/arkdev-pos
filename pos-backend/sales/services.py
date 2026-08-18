@@ -1,10 +1,13 @@
+import uuid
 from decimal import Decimal
 
 from django.db import IntegrityError, transaction
+from django.db.models import Sum
 from django.utils import timezone
 
 from audit.services import log_action
-from sales.models import CashShift
+from catalog.services import InsufficientStockError, decrement_batch_stock
+from sales.models import CashShift, Payment, Sale, SaleDetail
 
 
 class ShiftError(Exception):
@@ -15,18 +18,29 @@ class ShiftPermissionError(Exception):
     """Quien intenta la acción no tiene autoridad para hacerla (-> 403)."""
 
 
-def compute_expected_totals(shift):
-    """Efectivo/voucher que el sistema espera encontrar al cierre.
+class SaleError(Exception):
+    """Error de regla de negocio al registrar una venta (-> 400)."""
 
-    Hoy solo cuenta el fondo de apertura: `sales.Sale`/`Payment` todavía no
-    existen (construcción pendiente en el punto 4 del orden de construcción,
-    ver arquitectura_tecnica_pos.md §9). Cuando existan, este es el único
-    lugar que hay que extender para sumarlas por método de pago — el resto
-    de open_shift/close_shift no cambia.
+
+def compute_expected_totals(shift):
+    """Efectivo/voucher que el sistema espera encontrar al cierre, a partir
+    de las ventas reales del turno — este era el único lugar que había que
+    extender cuando Sale/Payment existieran (ver la nota anterior en este
+    mismo archivo, ya resuelta): CREDIT (fiado) no entra a ninguna de las
+    dos sumas porque no mueve dinero en la caja al momento de la venta.
     """
+    payments = Payment.objects.filter(sale__cash_shift=shift, sale__status=Sale.Status.COMPLETED)
+
+    cash_total = payments.filter(method=Payment.Method.CASH).aggregate(total=Sum('amount'))['total'] or Decimal('0')
+    voucher_total = (
+        payments.filter(method__in=[Payment.Method.CARD, Payment.Method.TRANSFER])
+        .aggregate(total=Sum('amount'))['total']
+        or Decimal('0')
+    )
+
     return {
-        'cash': shift.opening_balance,
-        'voucher': Decimal('0'),
+        'cash': shift.opening_balance + cash_total,
+        'voucher': voucher_total,
     }
 
 
@@ -91,3 +105,86 @@ def close_shift(*, shift, closing_user, actual_closing_balance, actual_voucher_t
         )
 
     return shift
+
+
+def create_sale(*, cash_shift, details, payments, occurred_at=None, discount_amount=Decimal('0'), client_uuid=None):
+    """Registra una venta completa: líneas + pagos divididos, en una sola
+    transacción.
+
+    `details`: lista de dicts {'product', 'batch' (opcional), 'quantity',
+    'unit_price'} — ya resueltos a instancias de modelo y ya acotados al
+    tenant por quien llama (la vista), esta función no vuelve a filtrar por
+    tenant, solo aplica reglas de negocio.
+    `payments`: lista de dicts {'method', 'amount'} — deben sumar exacto el
+    total calculado, si no, la venta se rechaza completa (rollback).
+    """
+    if cash_shift.status != CashShift.Status.OPEN:
+        raise SaleError('No hay un turno abierto para registrar la venta.')
+    if not details:
+        raise SaleError('La venta necesita al menos una línea.')
+    if not payments:
+        raise SaleError('La venta necesita al menos un pago.')
+
+    occurred_at = occurred_at or timezone.now()
+    client_uuid = client_uuid or uuid.uuid4()
+
+    with transaction.atomic():
+        subtotal = Decimal('0')
+        tax_total = Decimal('0')
+        detail_rows = []
+
+        for line in details:
+            product = line['product']
+            batch = line.get('batch')
+            quantity = line['quantity']
+            unit_price = line['unit_price']
+
+            if batch is not None and batch.product_id != product.id:
+                raise SaleError(f'El lote {batch.batch_number} no corresponde al producto {product.name}.')
+
+            if batch is not None:
+                try:
+                    decrement_batch_stock(batch=batch, quantity=quantity)
+                except InsufficientStockError as exc:
+                    raise SaleError(str(exc))
+
+            line_subtotal = quantity * unit_price
+            tax_rate_applied = product.tax_rate
+            line_tax = (line_subtotal * tax_rate_applied / Decimal('100')).quantize(Decimal('0.01'))
+
+            subtotal += line_subtotal
+            tax_total += line_tax
+            detail_rows.append({
+                'product': product,
+                'batch': batch,
+                'quantity': quantity,
+                'unit_price': unit_price,
+                'tax_rate_applied': tax_rate_applied,
+                'tax_amount': line_tax,
+            })
+
+        total = subtotal - discount_amount + tax_total
+
+        payments_total = sum((p['amount'] for p in payments), Decimal('0'))
+        if payments_total != total:
+            raise SaleError(f'Los pagos suman {payments_total} pero la venta totaliza {total}.')
+
+        sale = Sale(
+            cash_shift=cash_shift,
+            client_uuid=client_uuid,
+            occurred_at=occurred_at,
+            subtotal=subtotal,
+            discount_amount=discount_amount,
+            tax_amount=tax_total,
+            total=total,
+        )
+        sale.save()
+
+        # .create() uno por uno, no bulk_create: SaleDetail.save()/Payment.save()
+        # derivan `company` de `sale` — bulk_create no llama save() por fila.
+        for row in detail_rows:
+            SaleDetail.objects.create(sale=sale, **row)
+        for p in payments:
+            Payment.objects.create(sale=sale, method=p['method'], amount=p['amount'])
+
+    return sale
