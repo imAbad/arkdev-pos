@@ -102,46 +102,38 @@ Cada feature es dueña de su propio estado (Context o similar, como ya usan) y s
 
 **CashRegister** / **CashShift** — *extraídos casi sin cambios, ya genéricos*
 
-**Decisión tomada durante construcción:** el override de "cerrar el turno de otro cajero" (en `pharma_core` estaba fijo a `role == ADMIN`) cambia aquí a `role == ADMINISTRADOR` **o** `capabilities.can_authorize_exceptions == True`. Es consistente con la decisión ya tomada en la sección 5 (Supervisor se modela como capability, no como role) — esto le da un uso real y probado a `can_authorize_exceptions` antes de que exista el endpoint de PIN (orden de construcción, punto 6). Ambos caminos (admin y capability) quedan registrados en `AuditLog`. **Actualizado al construir el punto 4**: `compute_expected_totals()` ya no solo cuenta el fondo de apertura — ahora suma `Payment` reales del turno (`CASH` al efectivo esperado, `CARD`/`TRANSFER` al voucher esperado; `CREDIT` no entra a ninguna de las dos sumas porque el fiado no mueve dinero en caja al momento de la venta).
+**Decisión tomada durante construcción:** el override de "cerrar el turno de otro cajero" (en `pharma_core` estaba fijo a `role == ADMIN`) cambia aquí a `role == ADMINISTRADOR` **o** `capabilities.can_authorize_exceptions == True`. Es consistente con la decisión ya tomada en la sección 5 (Supervisor se modela como capability, no como role) — esto le da un uso real y probado a `can_authorize_exceptions` antes de que exista el endpoint de PIN (orden de construcción, punto 6). Ambos caminos (admin y capability) quedan registrados en `AuditLog`. `expected_closing_balance` en el arqueo hoy solo contempla el fondo de apertura, porque `Sale`/`Payment` no existen todavía (punto 4) — `compute_expected_totals()` es el único punto a extender cuando lleguen.
 
-**Sale/SaleDetail/Payment — rediseño real, punto 4 del orden de construcción.** Antes de codificar se decidieron y documentaron (no en silencio) los 3 puntos que quedaron abiertos en la v1 de este documento:
-
-1. **Cantidad para KG/LITRO/GRAMO**: `SaleDetail.quantity` es `DecimalField(max_digits=10, decimal_places=3)` desde el modelo inicial, no un placeholder — 3 decimales cubre gramos como unidad mínima de kg/litro (ej. `0.750` kg). Se usa el mismo tipo para todos los `unit_type`, incluyendo PIEZA/PAQUETE/SERVICIO (`3.000`), para no tener dos tipos de columna condicionales.
-2. **`tax_amount` por línea, no solo a nivel de Sale**: `SaleDetail` gana un campo `tax_amount` (no estaba en la tabla original de este documento) calculado y persistido al crear la venta; `Sale.tax_amount` es la suma de sus líneas. Razón: la especificación (§7) exige exenciones tipo "alimentos básicos" — dos líneas de la misma venta pueden tener tasas de IVA distintas, y sumar el impuesto solo al total perdería esa granularidad. `SaleDetail.tax_rate_applied` congela `Product.tax_rate` al momento de la venta (si el producto cambia de tasa después, no reescribe ventas ya cerradas). No hay descuento por línea (`discount_amount` sigue siendo solo de `Sale`, tal como ya estaba en la tabla original) — el impuesto se calcula sobre el subtotal bruto de cada línea, no sobre un neto post-descuento que no existe a ese nivel.
-3. **`client_uuid` (unique) y `occurred_at` confirmados desde ahora**: ambos van en `Sale` desde el modelo inicial aunque la cola de sincronización offline no se construya todavía, tal como ya pedía este documento. `client_uuid` no tiene `default` a nivel de modelo (lo genera el cliente offline, no el servidor) — `sales.services.create_sale` sí genera uno server-side si no llega, para no bloquear el flujo síncrono de hoy.
-
-**Decisiones adicionales tomadas con el mismo criterio de core/tenants/audit/catalog, no preguntadas explícitamente:**
-- **`Sale.client` (FK a `customers.Client`, para fiado) queda fuera del modelo por ahora** — `customers` es el punto 5 del orden de construcción, todavía no existe, y no se puede apuntar un FK a un modelo inexistente. `Payment.method = CREDIT` ya existe como choice (no depende de `customers`), pero su contabilidad real (cargar a `CreditAccount`) se conecta cuando `customers` exista. Se retoma en el punto 5, igual que "reportes genéricos" se documentó como pospuesto en `decisiones_post_auditoria.md` §10.
-- **Descuento de stock por lote vive en `catalog.services.decrement_batch_stock`, no en `sales`** — `sales.services.create_sale` lo llama en vez de tocar `Batch` directamente, respetando la regla de límites entre apps de la sección 2 ("si `sales` necesita algo de `catalog`, es un FK normal a nivel de modelo, pero la lógica de negocio vive en su propio `services.py`"). Usa `select_for_update()` con hilos reales probados en test — mismo patrón que la concurrencia de apertura de turno, y el que la sección 8 ya pedía portar de `deduct_stock_fefo`. No hace selección FEFO automática: el lote ya viene elegido por quien llama (`SaleDetail.batch` es explícito, no auto-asignado) — FEFO automático queda como posible mejora futura, no pedida todavía.
-- **`TenantScopedFieldsMixin` no se usa en los serializers anidados de líneas/pagos** (`SaleLineInputSerializer`, `PaymentInputSerializer`) — un serializer anidado declarado como atributo de clase (`details = XSerializer(many=True)`) se instancia una sola vez al importar el módulo, sin `request` disponible todavía, así que el mixin no tendría nada que acotar (el `context` con el `request` real solo llega después, vía `bind()`). `product_id`/`batch_id` se resuelven a mano contra `.objects.for_user(...)` en el ViewSet — mismo patrón ya usado en `OpenShiftInputSerializer.cash_register_id`. El mixin sí se usa en el campo top-level `cash_shift` de `SaleCreateSerializer`, que sí se instancia una vez por request con contexto real.
-
-**Sale**
+**Sale** — *construido; ver decisiones reales abajo*
 | Campo | Tipo | Nota |
 |---|---|---|
-| branch, cash_register, cash_shift | FKs | `cash_shift` es el nombre real del modelo de turno (`CashShift`, no `Shift`) — `branch`/`cash_register` se guardan denormalizados, derivados de `cash_shift` en `save()` |
-| client | — | **Pendiente, ver nota arriba** — no existe hasta el punto 5 (`customers`) |
-| client_uuid | UUID, unique | Idempotencia para offline — sin default de modelo, ver punto 3 arriba |
-| occurred_at | datetime | Distinto de `created_at`, lo declara el cliente — ver punto 3 arriba |
+| branch, cash_register, shift | FKs | |
+| client | FK Client, nullable | **Construido en el punto 5.** Obligatorio solo si algún `Payment` de la venta es `CREDIT` (`sales.services.create_sale` lo exige y llama a `customers.services.charge_credit`) — el resto de ventas no lo necesita. |
+| client_uuid | UUID, unique | Confirmado en el modelo desde ahora, sin default a nivel modelo |
+| occurred_at | datetime | Distinto de `created_at`, lo declara el cliente |
 | created_at | datetime (auto_now_add) | Cuándo llegó al servidor |
-| subtotal, discount_amount, tax_amount, total | Decimal | `tax_amount` es la suma de `SaleDetail.tax_amount` — ver punto 2 arriba |
+| subtotal, discount_amount, total | Decimal | |
+| tax_amount | Decimal | **Es la suma de `SaleDetail.tax_amount`, no un cálculo independiente** — ver decisión abajo |
 | status | choices: `COMPLETED`, `CANCELLED`, `REFUNDED` | |
 
-**SaleDetail**
+**SaleDetail** — *construido, con un campo agregado sobre el diseño original*
 | Campo | Tipo | Nota |
 |---|---|---|
 | sale | FK Sale | |
 | product | FK Product | |
 | batch | FK Batch, **nullable** | Cambio clave: ya no obligatoria |
-| quantity | Decimal(10,3) | Fraccionaria — ver punto 1 arriba |
+| quantity | **Decimal(10,3)** | Decidido así desde el modelo inicial (no placeholder) — cubre fracciones como 0.750 kg para productos `unit_type` KG/LITRO/GRAMO |
 | unit_price, tax_rate_applied | Decimal | |
-| tax_amount | Decimal | **Agregado en construcción, no estaba en la tabla original** — ver punto 2 arriba |
+| **tax_amount** | **Decimal — agregado, no estaba en el diseño original** | **Decisión tomada durante construcción**: el IVA se calcula y guarda **por línea**, no solo a nivel `Sale`. Razón: la especificación exige exenciones tipo alimentos básicos — dos líneas de la misma venta pueden tener tasas distintas (ej. un producto exento + uno gravado), y sumar solo al total pierde esa granularidad para auditoría/corrección posterior. `Sale.tax_amount` es la suma de las líneas, no un cálculo aparte. |
+
+**Descuento de stock — vive en `catalog`, no en `sales`:** `catalog.services.decrement_batch_stock()`, con `select_for_update()` probado con hilos reales (mismo patrón de concurrencia que `CashShift`). Se puso en `catalog` y no en `sales` para respetar el límite de apps de la sección 2 (`sales` no debe importar lógica de negocio de otra app directamente) — `sales` llama al servicio de `catalog`, no reimplementa el descuento.
 
 **Payment** *(nuevo — habilita pago dividido, no existía en Zenith Pharma)*
 | Campo | Tipo | Nota |
 |---|---|---|
 | sale | FK Sale | |
-| method | choices: `CASH`, `CARD`, `TRANSFER`, `CREDIT` | `CREDIT` no cuenta en el arqueo de caja (ver nota de `compute_expected_totals` arriba) ni tiene contabilidad de fiado todavía (pendiente de `customers`) |
-| amount | Decimal | Una venta puede tener N registros Payment que suman el total — `sales.services.create_sale` rechaza toda la venta (rollback completo) si no suman exacto |
+| method | choices: `CASH`, `CARD`, `TRANSFER`, `CREDIT` | `CREDIT` conectado con `customers` desde el punto 5: exige `Sale.client` y dispara un `CreditMovement` `CARGO` vía `customers.services.charge_credit`; si excede `credit_limit`, la venta completa se revierte (stock incluido) |
+| amount | Decimal | Una venta puede tener N registros Payment que suman el total |
 
 ### 4.3 `catalog`
 
@@ -166,27 +158,27 @@ Cada feature es dueña de su propio estado (Context o similar, como ya usan) y s
 
 **Confirmado sin ambigüedad durante construcción:** `Product.unit_type` es únicamente un campo de choices informativo — no tiene lógica de venta a granel embebida. Esa lógica (cómo se captura/valida una venta por KG/LITRO, integración de báscula si aplica) pertenece 100% a `sales`, no a `catalog`. `requires_batch` es igualmente informativo: no hay constraint de BD que ate `Product` a `Batch` en ningún sentido — lo confirma `RequiresBatchIndependenceTests`, que prueba las 4 combinaciones posibles.
 
-### 4.4 `customers` *(100% nuevo)*
+### 4.4 `customers` *(100% nuevo — construido en el punto 5)*
 
 **Client**
 | Campo | Tipo | Nota |
 |---|---|---|
-| branch/company | FK | |
+| company | FK (vía `BaseTenantModel`) | **Decisión tomada al construir**: escalado por `company`, no por `branch` — un cliente puede comprar fiado en cualquier sucursal del tenant, la tabla original solo decía "branch/company FK" sin ser más específica. No se agregó campo `branch`. |
 | name, phone | str | |
-| credit_limit | Decimal | |
+| credit_limit | Decimal, default 0 | Sin límite explícito, el cliente no tiene crédito — se enforce en `customers.services.charge_credit`, si no el campo sería decorativo |
 
 **CreditAccount**
 | Campo | Tipo | Nota |
 |---|---|---|
-| client | FK Client (1:1) | |
-| balance | Decimal | |
+| client | FK Client (1:1) | Se crea automático al crear el `Client` (`Client.save()`) — nunca queda un cliente sin cuenta |
+| balance | Decimal | Solo se muta vía `charge_credit`/`pay_credit`, nunca directo — el ViewSet es de solo lectura + acción `pay` |
 
-**CreditMovement**
+**CreditMovement** — anidado en `CreditAccount`, sin ViewSet propio (ver regla del mixin en la sección 5, ya aplicada aquí: `sale_id` en la acción `pay` se resuelve a mano, no vía `TenantScopedFieldsMixin`)
 | Campo | Tipo | Nota |
 |---|---|---|
 | account | FK CreditAccount | |
-| sale | FK Sale, nullable | Nullable porque un abono no viene de una venta |
-| amount, type (`CARGO`/`ABONO`) | | |
+| sale | FK Sale, nullable | Nullable porque un abono no viene de una venta — confirmado con test explícito (`customers/tests/test_credit.py::test_abono_without_sale_updates_balance_correctly`) |
+| amount, type (`CARGO`/`ABONO`) | | `CARGO` se crea automático desde `sales.services.create_sale` cuando hay `Payment.method=CREDIT`; `ABONO` se crea manual vía `POST /api/v1/credit-accounts/{id}/pay/` |
 
 ### 4.5 `audit` — extraído tal cual, sin cambios.
 
@@ -206,6 +198,8 @@ TenantScopedQuerySet / TenantScopedManager
 Esto reemplaza el patrón de `pharma_core` (filtro manual repetido por ViewSet) que la auditoría marcó como riesgo. Es la primera pieza de infraestructura a construir — todo lo demás depende de que esto exista y esté bien probado (con tests que confirmen que un tenant no puede ver datos de otro, no solo que el happy path funciona).
 
 **Pieza agregada durante construcción, ahora parte del patrón:** `core/serializers.py::TenantScopedFieldsMixin` — acota los querysets de campos FK en serializers (ej. `branch`, `category`, `supplier`) al tenant del request. Nace de un vector de fuga encontrado dos veces por separado (`CashRegisterSerializer.branch`, luego `Product.category`/`.supplier` y `Batch.product`/`.branch`): sin esto, un FK sin acotar en un serializer permite crear/editar un registro apuntando a datos de otro tenant, aunque el queryset de lectura ya esté filtrado por `TenantScopedQuerySet`. **Regla derivada: todo serializer con un campo FK debe usar este mixin, no es opcional ni caso por caso** — el aislamiento a nivel API no está completo solo con el queryset de lectura, también hay que acotar lo que se puede *escribir*.
+
+**Límite conocido del mixin, encontrado en `sales` — aplica a cualquier app futura con serializers anidados:** `TenantScopedFieldsMixin` **no funciona en serializers declarados como atributo de clase dentro de otro serializer** (el `request` no existe todavía en su `__init__` en ese punto de la carga). En `SaleDetail` (anidado dentro de `Sale`), `product_id`/`batch_id` se resuelven a mano en vez de vía el mixin; el mixin sí se usa en el campo top-level (`cash_shift`). **Regla para cualquier app futura:** si un serializer va anidado como atributo de clase, sus FKs se acotan a mano (con el mismo criterio de seguridad, solo que sin el mixin) — no asumir que "usar el mixin" alcanza solo porque el serializer lo importa. **Aplicada al construir `customers` (punto 5)**: `CreditMovementInputSerializer.sale_id` (usado por `CreditAccountViewSet.pay`) es un `IntegerField` plano resuelto a mano contra `Sale.objects.for_user(...)`, no un `PrimaryKeyRelatedField` con el mixin — probado explícitamente en `customers/tests/test_isolation.py::test_pay_rejects_sale_id_belonging_to_another_tenant`. `CreditAccountSerializer.client` sí usa el mixin (serializer top-level, no anidado).
 
 ---
 
@@ -242,7 +236,7 @@ Esto reemplaza el patrón de `pharma_core` (filtro manual repetido por ViewSet) 
 2. Extracción de piezas "tal cual" (`audit`, permisos, `CashRegister`/`CashShift`, reportes genéricos, feature flags) como paquete compartido.
 3. `catalog` (Product generalizado, con `image` desde el diseño aunque no se use aún).
 4. `sales` (Sale/SaleDetail/Payment rediseñados — pago dividido, impuestos reales, `client_uuid`/`occurred_at` en el modelo aunque la cola de sync no se construya todavía).
-5. `customers` (fiado) — greenfield.
+5. `customers` (fiado) — greenfield. ✅ Construido: `Client`/`CreditAccount`/`CreditMovement`, `Sale.client` conectado (antes pospuesto), `Payment.method=CREDIT` carga a `CreditAccount` vía `sales.services.create_sale` -> `customers.services.charge_credit`.
 6. Capability `can_authorize_exceptions` + endpoint de PIN — greenfield.
 7. Frontend: features de venta/caja primero (son el corazón del uso diario), catálogo y clientes después.
 8. Integración de hardware en tienda real + pruebas con el cliente.

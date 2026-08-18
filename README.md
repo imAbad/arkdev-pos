@@ -15,6 +15,7 @@ ark-dev/
 │   ├── audit/            → AuditLog
 │   ├── sales/             → CashRegister/CashShift, Sale/SaleDetail/Payment
 │   ├── catalog/           → Product, Category, Supplier, Batch
+│   ├── customers/         → Client, CreditAccount, CreditMovement (fiado)
 │   └── config/            → settings, urls
 ├── pos-frontend/        ← React + Vite (todavía no construido, ver "Estado actual")
 ├── docker-compose.yml
@@ -82,7 +83,7 @@ Según el orden de construcción de `documentacion/arquitectura_tecnica_pos.md` 
 - [x] 2. Extracción "tal cual": `audit`, permisos por capability, `sales.CashRegister`/`CashShift` (apertura/cierre, arqueo ciego)
 - [x] 3. `catalog` (Product generalizado, Category, Supplier, Batch)
 - [x] 4. `sales.Sale`/`SaleDetail`/`Payment` (pago dividido, impuestos, `client_uuid`/`occurred_at`)
-- [ ] 5. `customers` (fiado)
+- [x] 5. `customers` (fiado) — `Sale.client` conectado, `Payment.method=CREDIT` carga a `CreditAccount`
 - [ ] 6. Endpoint de PIN/reautenticación para `can_authorize_exceptions` (la capability ya existe en `core/permissions.py`, el endpoint todavía no)
 - [ ] 7. Frontend (`pos-frontend/`)
 - [ ] 8. Integración de hardware en tienda real
