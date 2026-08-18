@@ -11,9 +11,10 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from audit.models import AuditLog
+from catalog.tests.factories import create_product
 from sales.models import CashRegister, CashShift
 from sales.services import ShiftError, ShiftPermissionError, close_shift, open_shift
-from sales.tests.factories import create_cash_register
+from sales.tests.factories import create_cash_register, make_sale
 from tenants.models import User, UserProfile
 from tenants.tests.factories import create_branch, create_full_tenant, create_user_with_profile
 
@@ -156,14 +157,40 @@ class CloseShiftServiceTests(TestCase):
         self.assertEqual(closed.closed_by, self.tenant['user'])
         self.assertIsNotNone(closed.closed_at)
 
-    def test_expected_closing_balance_is_opening_balance_without_sales_model_yet(self):
-        # Documenta el límite actual y a propósito: sales.Sale/Payment no
-        # existen todavía (punto 4 del orden de construcción), así que lo
-        # único "esperado" hoy es el fondo de apertura. Cuando Sale exista,
-        # sales.services.compute_expected_totals se extiende para sumarlas
-        # y este test se actualiza junto con esa pieza.
+    def test_expected_closing_balance_with_no_sales_is_just_the_opening_balance(self):
         closed = close_shift(shift=self.shift, closing_user=self.tenant['user'], actual_closing_balance=Decimal('130'))
         self.assertEqual(closed.expected_closing_balance, Decimal('100'))
+        self.assertEqual(closed.expected_voucher_total, Decimal('0'))
+
+    def test_expected_closing_balance_sums_cash_sales_of_the_shift(self):
+        product = create_product(self.tenant['company'], tax_rate=Decimal('0'))
+        make_sale(self.shift, product, quantity=Decimal('1'), unit_price=Decimal('50'), payment_method='CASH')
+        make_sale(self.shift, product, quantity=Decimal('1'), unit_price=Decimal('30'), payment_method='CASH')
+
+        closed = close_shift(shift=self.shift, closing_user=self.tenant['user'], actual_closing_balance=Decimal('180'))
+        # 100 de apertura + 50 + 30 de ventas en efectivo del turno
+        self.assertEqual(closed.expected_closing_balance, Decimal('180'))
+
+    def test_expected_voucher_total_sums_card_and_transfer_but_not_cash(self):
+        product = create_product(self.tenant['company'], tax_rate=Decimal('0'))
+        make_sale(self.shift, product, quantity=Decimal('1'), unit_price=Decimal('50'), payment_method='CASH')
+        make_sale(self.shift, product, quantity=Decimal('1'), unit_price=Decimal('25'), payment_method='CARD')
+        make_sale(self.shift, product, quantity=Decimal('1'), unit_price=Decimal('15'), payment_method='TRANSFER')
+
+        closed = close_shift(
+            shift=self.shift, closing_user=self.tenant['user'],
+            actual_closing_balance=Decimal('150'), actual_voucher_total=Decimal('40'),
+        )
+        self.assertEqual(closed.expected_closing_balance, Decimal('150'))  # 100 + 50 cash
+        self.assertEqual(closed.expected_voucher_total, Decimal('40'))    # 25 card + 15 transfer
+
+    def test_credit_sales_count_in_neither_cash_nor_voucher_expected(self):
+        # Fiado no mueve dinero en la caja al momento de la venta.
+        product = create_product(self.tenant['company'], tax_rate=Decimal('0'))
+        make_sale(self.shift, product, quantity=Decimal('1'), unit_price=Decimal('99'), payment_method='CREDIT')
+
+        closed = close_shift(shift=self.shift, closing_user=self.tenant['user'], actual_closing_balance=Decimal('100'))
+        self.assertEqual(closed.expected_closing_balance, Decimal('100'))  # solo apertura
         self.assertEqual(closed.expected_voucher_total, Decimal('0'))
 
     def test_cash_and_voucher_difference_are_computed_from_declared_vs_expected(self):
