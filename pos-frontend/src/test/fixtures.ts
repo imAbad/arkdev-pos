@@ -1,7 +1,36 @@
 // Factories de datos de prueba con la forma EXACTA de los serializers
 // reales (src/types/api.ts, leído del backend, no inventado) — cualquier
 // test parte de estas y sobreescribe solo lo que le importa.
+import { AxiosError, AxiosHeaders } from 'axios'
 import type { Branch, CashRegister, CashShift, CompanySettings, Product, Sale, UserProfile } from '@/types/api'
+
+/** AxiosError real (no un objeto a mano) con una respuesta HTTP — para
+ * probar el mapeo de errores contra la forma exacta que devuelve axios,
+ * mismo enfoque que ya protegía el bug del login (ver AuthProvider.test). */
+export function axiosErrorWithStatus(status: number, data: unknown = {}, requestHadAuth = true): AxiosError {
+  const requestHeaders = new AxiosHeaders()
+  if (requestHadAuth) requestHeaders.Authorization = 'Bearer test-token'
+  return new AxiosError(
+    'Request failed',
+    'ERR_BAD_REQUEST',
+    { headers: requestHeaders },
+    undefined,
+    {
+      status,
+      statusText: '',
+      headers: {},
+      config: { headers: new AxiosHeaders() },
+      data,
+    },
+  )
+}
+
+/** Error de axios SIN respuesta del servidor — red caída, timeout, CORS
+ * bloqueado, backend inalcanzable. `error.response` es undefined en todos
+ * estos casos, a diferencia de un 4xx/5xx real. */
+export function axiosNetworkError(): AxiosError {
+  return new AxiosError('Network Error', 'ERR_NETWORK')
+}
 
 export function makeProfile(overrides: Partial<UserProfile> = {}): UserProfile {
   return {

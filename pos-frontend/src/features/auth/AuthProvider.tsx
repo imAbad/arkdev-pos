@@ -3,6 +3,7 @@ import axios from 'axios'
 import { login as loginRequest } from '@/services/api/authApi'
 import { getBranch, getMyCompanySettings, getMyProfile } from '@/services/api/tenantsApi'
 import { clearAccessToken, getAccessToken, setAccessToken } from '@/lib/auth-storage'
+import { onSessionExpired } from '@/lib/api-client'
 import { applyAccentColor } from '@/lib/theme'
 import { t } from '@/i18n'
 import type { Branch, CompanySettings, UserProfile } from '@/types/api'
@@ -32,6 +33,7 @@ export interface AuthContextValue {
   loginError: string | null
   loggingIn: boolean
   logout: () => void
+  sessionExpiredNotice: string | null
 }
 
 // Exportado para que los tests de pantallas individuales (OpenShiftScreen,
@@ -62,10 +64,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [companySettings, setCompanySettings] = useState<CompanySettings | null>(null)
   const [loginError, setLoginError] = useState<string | null>(null)
   const [loggingIn, setLoggingIn] = useState(false)
+  const [sessionExpiredNotice, setSessionExpiredNotice] = useState<string | null>(null)
 
   useEffect(() => {
     applyAccentColor(companySettings?.accent_color)
   }, [companySettings])
+
+  // Token rechazado a medio uso (no login) — vaciar todo y mandar al login
+  // con un aviso explícito, nunca una pantalla en blanco o un "Cargando…"
+  // infinito. El carrito de una venta en curso NO se preserva (ver el
+  // texto del aviso) — SaleScreen se desmonta al cambiar `status`.
+  useEffect(() => {
+    return onSessionExpired(() => {
+      setProfile(null)
+      setBranch(null)
+      setCompanySettings(null)
+      setStatus('unauthenticated')
+      setSessionExpiredNotice(t.common.sessionExpiredNotice)
+    })
+  }, [])
 
   useEffect(() => {
     if (!getAccessToken()) {
@@ -88,6 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (email: string, password: string) => {
     setLoggingIn(true)
     setLoginError(null)
+    setSessionExpiredNotice(null)
     try {
       const tokens = await loginRequest(email, password)
       setAccessToken(tokens.access)
@@ -111,12 +129,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(null)
     setBranch(null)
     setCompanySettings(null)
+    setSessionExpiredNotice(null)
     setStatus('unauthenticated')
   }, [])
 
   const value = useMemo<AuthContextValue>(
-    () => ({ status, profile, branch, companySettings, login, loginError, loggingIn, logout }),
-    [status, profile, branch, companySettings, login, loginError, loggingIn, logout],
+    () => ({
+      status, profile, branch, companySettings, login, loginError, loggingIn, logout, sessionExpiredNotice,
+    }),
+    [status, profile, branch, companySettings, login, loginError, loggingIn, logout, sessionExpiredNotice],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

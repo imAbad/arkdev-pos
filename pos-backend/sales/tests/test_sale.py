@@ -129,6 +129,17 @@ class CreateSaleServiceTests(TestCase):
             )
         self.assertEqual(Sale.objects.count(), 0)
 
+    def test_insufficient_stock_error_names_the_product(self):
+        batch = create_batch(self.ctx['product'], self.ctx['branch'], initial_quantity=2)
+        with self.assertRaises(SaleError) as ctx:
+            create_sale(
+                cash_shift=self.ctx['shift'],
+                details=[{'product': self.ctx['product'], 'batch': batch, 'quantity': Decimal('5'), 'unit_price': Decimal('10.00')}],
+                payments=[{'method': 'CASH', 'amount': Decimal('58.00')}],
+            )
+        self.assertIn(f'No hay suficiente stock de {self.ctx["product"].name}', str(ctx.exception))
+        self.assertEqual(Sale.objects.count(), 0)
+
     def test_rejected_sale_leaves_no_partial_rows_rollback(self):
         # Confirma que el rollback es completo: ni Sale ni SaleDetail ni
         # Payment quedan a medias cuando los pagos no cuadran.

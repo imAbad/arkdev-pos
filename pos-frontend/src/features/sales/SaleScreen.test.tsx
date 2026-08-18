@@ -182,4 +182,56 @@ describe('SaleScreen', () => {
 
     expect(screen.getByText('Refresco de cola 600ml')).toBeInTheDocument()
   })
+
+  it('si el backend rechaza por stock insuficiente, muestra el mensaje exacto y conserva el carrito', async () => {
+    mockSearch({ refresco: [REFRESCO] })
+    server.use(
+      http.post(CREATE_SALE_URL, () =>
+        HttpResponse.json(
+          { code: 'SaleError', detail: 'No hay suficiente stock de Refresco de cola 600ml. Stock insuficiente en el lote L-1 (0 disponibles, se pidieron 1).' },
+          { status: 400 },
+        ),
+      ),
+    )
+
+    const user = userEvent.setup()
+    renderWithAuth(<SaleScreen shift={makeShift()} />)
+
+    await addProductToCart(user, 'refresco', 'Refresco de cola 600ml')
+    const cashInput = screen.getByLabelText(t.sale.cashReceived)
+    await user.clear(cashInput)
+    await user.type(cashInput, '25')
+    await user.click(screen.getByRole('button', { name: t.sale.charge }))
+
+    expect(await screen.findByText(/No hay suficiente stock de Refresco de cola 600ml/)).toBeInTheDocument()
+    // El carrito NO se pierde — el cajero puede ajustar la cantidad y reintentar:
+    expect(screen.getByText('Refresco de cola 600ml')).toBeInTheDocument()
+    expect(screen.queryByText(t.sale.emptyCart)).not.toBeInTheDocument()
+  })
+
+  it('doble clic en "Cobrar" no envía dos ventas (el botón se deshabilita en cuanto empieza la primera)', async () => {
+    mockSearch({ refresco: [REFRESCO] })
+    let callCount = 0
+    server.use(
+      http.post(CREATE_SALE_URL, async () => {
+        callCount += 1
+        await new Promise((resolve) => setTimeout(resolve, 30))
+        return HttpResponse.json(makeSale(), { status: 201 })
+      }),
+    )
+
+    const user = userEvent.setup()
+    renderWithAuth(<SaleScreen shift={makeShift()} />)
+
+    await addProductToCart(user, 'refresco', 'Refresco de cola 600ml')
+    const cashInput = screen.getByLabelText(t.sale.cashReceived)
+    await user.clear(cashInput)
+    await user.type(cashInput, '25')
+
+    const chargeButton = screen.getByRole('button', { name: t.sale.charge })
+    await user.dblClick(chargeButton)
+
+    await screen.findByText(t.confirmation.title)
+    expect(callCount).toBe(1)
+  })
 })

@@ -7,7 +7,7 @@ import { useAuth } from '@/features/auth/AuthProvider'
 import { t } from '@/i18n'
 
 export function LoginScreen() {
-  const { login, loginError, loggingIn } = useAuth()
+  const { login, loginError, loggingIn, sessionExpiredNotice } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
 
@@ -21,6 +21,12 @@ export function LoginScreen() {
       <Card className="w-full max-w-md">
         <h1 className="text-3xl font-bold text-ink">{t.login.title}</h1>
         <p className="mt-2 text-lg text-ink/70">{t.login.subtitle}</p>
+
+        {sessionExpiredNotice && (
+          <p role="alert" className="mt-4 text-lg font-medium text-cancel">
+            {sessionExpiredNotice}
+          </p>
+        )}
 
         <form className="mt-8 flex flex-col gap-6" onSubmit={handleSubmit}>
           <div>

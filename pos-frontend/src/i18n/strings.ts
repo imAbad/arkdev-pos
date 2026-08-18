@@ -11,6 +11,10 @@ export const es = {
     retry: 'Reintentar',
     yes: 'Sí',
     no: 'No',
+    errorNetwork: 'No hay conexión a internet. Intenta de nuevo.',
+    errorServer: 'Algo salió mal, intenta de nuevo. Si continúa, avisa a soporte.',
+    errorSessionExpired: 'Tu sesión expiró. Vuelve a iniciar sesión.',
+    sessionExpiredNotice: 'Tu sesión expiró. Vuelve a iniciar sesión. Si tenías una venta sin cobrar, tendrás que rehacerla.',
   },
   login: {
     title: 'Iniciar sesión',

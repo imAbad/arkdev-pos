@@ -156,7 +156,7 @@ def create_sale(
                 try:
                     decrement_batch_stock(batch=batch, quantity=quantity)
                 except InsufficientStockError as exc:
-                    raise SaleError(str(exc))
+                    raise SaleError(f'No hay suficiente stock de {product.name}. {exc}')
 
             line_subtotal = quantity * unit_price
             tax_rate_applied = product.tax_rate

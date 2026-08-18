@@ -23,6 +23,7 @@ export function fakeAuthValue(overrides: Partial<AuthContextValue> = {}): AuthCo
     loginError: null,
     loggingIn: false,
     logout: () => {},
+    sessionExpiredNotice: null,
     ...overrides,
   }
 }

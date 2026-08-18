@@ -1,5 +1,6 @@
 import axios, { AxiosError } from 'axios'
 import { clearAccessToken, getAccessToken } from './auth-storage'
+import { t } from '@/i18n'
 
 export const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000/api/v1',
@@ -13,24 +14,56 @@ apiClient.interceptors.request.use((config) => {
   return config
 })
 
+// Quien escuche esto decide qué hacer con una sesión que dejó de ser
+// válida a medio uso (AuthProvider: limpiar estado y mandar al login con
+// un aviso) — separado del interceptor para no acoplar lib/api-client.ts
+// (sin estado de React) a AuthProvider (con estado de React).
+type SessionExpiredListener = () => void
+const sessionExpiredListeners = new Set<SessionExpiredListener>()
+
+export function onSessionExpired(listener: SessionExpiredListener): () => void {
+  sessionExpiredListeners.add(listener)
+  return () => sessionExpiredListeners.delete(listener)
+}
+
 // Sesión expirada/rechazada a medio turno: no hay refresh automático
-// todavía (ver auth-storage.ts) — se limpia el token y se manda de vuelta
-// al login en el próximo render de AuthProvider.
+// todavía (ver auth-storage.ts) — se limpia el token y se avisa a quien
+// esté escuchando. Solo cuenta como "sesión expirada" si la request que
+// falló SÍ llevaba un token (si no lo llevaba, es un login normal con
+// credenciales inválidas — AuthProvider.loginErrorMessage ya cubre ese
+// caso por separado, no se debe disparar este aviso también ahí).
 apiClient.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
     if (error.response?.status === 401) {
+      const hadToken = Boolean(error.config?.headers?.Authorization)
       clearAccessToken()
+      if (hadToken) {
+        sessionExpiredListeners.forEach((listener) => listener())
+      }
     }
     return Promise.reject(error)
   },
 )
 
 /** Extrae un mensaje de error legible de una respuesta de la API (formato
- * estandarizado por core.exceptions.api_exception_handler: {code, detail}). */
+ * estandarizado por core.exceptions.api_exception_handler: {code, detail}).
+ * Prioriza los casos que nunca deben mostrarse tal cual antes de intentar
+ * leer `detail`:
+ * - sin respuesta del servidor (red caída, timeout, CORS) -> mensaje de
+ *   conexión, no el fallback específico de la pantalla que llamó.
+ * - 401 -> igual que el bug de login ya corregido (SimpleJWT devuelve
+ *   texto en inglés sin pasar por el exception_handler), nunca se intenta
+ *   leer `detail` de un 401.
+ * - 5xx -> mensaje genérico humano, nunca el detail crudo del backend
+ *   (puede ser HTML de la página de error de Django, no JSON). */
 export function apiErrorMessage(error: unknown, fallback: string): string {
   if (axios.isAxiosError(error)) {
-    const detail = error.response?.data?.detail
+    if (!error.response) return t.common.errorNetwork
+    if (error.response.status === 401) return t.common.errorSessionExpired
+    if (error.response.status >= 500) return t.common.errorServer
+
+    const detail = error.response.data?.detail
     if (typeof detail === 'string') return detail
     if (detail && typeof detail === 'object') {
       const firstValue = Object.values(detail)[0]
