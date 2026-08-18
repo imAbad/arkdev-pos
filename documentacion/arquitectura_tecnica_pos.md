@@ -102,17 +102,28 @@ Cada feature es dueña de su propio estado (Context o similar, como ya usan) y s
 
 **CashRegister** / **CashShift** — *extraídos casi sin cambios, ya genéricos*
 
-**Decisión tomada durante construcción:** el override de "cerrar el turno de otro cajero" (en `pharma_core` estaba fijo a `role == ADMIN`) cambia aquí a `role == ADMINISTRADOR` **o** `capabilities.can_authorize_exceptions == True`. Es consistente con la decisión ya tomada en la sección 5 (Supervisor se modela como capability, no como role) — esto le da un uso real y probado a `can_authorize_exceptions` antes de que exista el endpoint de PIN (orden de construcción, punto 6). Ambos caminos (admin y capability) quedan registrados en `AuditLog`. `expected_closing_balance` en el arqueo hoy solo contempla el fondo de apertura, porque `Sale`/`Payment` no existen todavía (punto 4) — `compute_expected_totals()` es el único punto a extender cuando lleguen.
+**Decisión tomada durante construcción:** el override de "cerrar el turno de otro cajero" (en `pharma_core` estaba fijo a `role == ADMIN`) cambia aquí a `role == ADMINISTRADOR` **o** `capabilities.can_authorize_exceptions == True`. Es consistente con la decisión ya tomada en la sección 5 (Supervisor se modela como capability, no como role) — esto le da un uso real y probado a `can_authorize_exceptions` antes de que exista el endpoint de PIN (orden de construcción, punto 6). Ambos caminos (admin y capability) quedan registrados en `AuditLog`. **Actualizado al construir el punto 4**: `compute_expected_totals()` ya no solo cuenta el fondo de apertura — ahora suma `Payment` reales del turno (`CASH` al efectivo esperado, `CARD`/`TRANSFER` al voucher esperado; `CREDIT` no entra a ninguna de las dos sumas porque el fiado no mueve dinero en caja al momento de la venta).
+
+**Sale/SaleDetail/Payment — rediseño real, punto 4 del orden de construcción.** Antes de codificar se decidieron y documentaron (no en silencio) los 3 puntos que quedaron abiertos en la v1 de este documento:
+
+1. **Cantidad para KG/LITRO/GRAMO**: `SaleDetail.quantity` es `DecimalField(max_digits=10, decimal_places=3)` desde el modelo inicial, no un placeholder — 3 decimales cubre gramos como unidad mínima de kg/litro (ej. `0.750` kg). Se usa el mismo tipo para todos los `unit_type`, incluyendo PIEZA/PAQUETE/SERVICIO (`3.000`), para no tener dos tipos de columna condicionales.
+2. **`tax_amount` por línea, no solo a nivel de Sale**: `SaleDetail` gana un campo `tax_amount` (no estaba en la tabla original de este documento) calculado y persistido al crear la venta; `Sale.tax_amount` es la suma de sus líneas. Razón: la especificación (§7) exige exenciones tipo "alimentos básicos" — dos líneas de la misma venta pueden tener tasas de IVA distintas, y sumar el impuesto solo al total perdería esa granularidad. `SaleDetail.tax_rate_applied` congela `Product.tax_rate` al momento de la venta (si el producto cambia de tasa después, no reescribe ventas ya cerradas). No hay descuento por línea (`discount_amount` sigue siendo solo de `Sale`, tal como ya estaba en la tabla original) — el impuesto se calcula sobre el subtotal bruto de cada línea, no sobre un neto post-descuento que no existe a ese nivel.
+3. **`client_uuid` (unique) y `occurred_at` confirmados desde ahora**: ambos van en `Sale` desde el modelo inicial aunque la cola de sincronización offline no se construya todavía, tal como ya pedía este documento. `client_uuid` no tiene `default` a nivel de modelo (lo genera el cliente offline, no el servidor) — `sales.services.create_sale` sí genera uno server-side si no llega, para no bloquear el flujo síncrono de hoy.
+
+**Decisiones adicionales tomadas con el mismo criterio de core/tenants/audit/catalog, no preguntadas explícitamente:**
+- **`Sale.client` (FK a `customers.Client`, para fiado) queda fuera del modelo por ahora** — `customers` es el punto 5 del orden de construcción, todavía no existe, y no se puede apuntar un FK a un modelo inexistente. `Payment.method = CREDIT` ya existe como choice (no depende de `customers`), pero su contabilidad real (cargar a `CreditAccount`) se conecta cuando `customers` exista. Se retoma en el punto 5, igual que "reportes genéricos" se documentó como pospuesto en `decisiones_post_auditoria.md` §10.
+- **Descuento de stock por lote vive en `catalog.services.decrement_batch_stock`, no en `sales`** — `sales.services.create_sale` lo llama en vez de tocar `Batch` directamente, respetando la regla de límites entre apps de la sección 2 ("si `sales` necesita algo de `catalog`, es un FK normal a nivel de modelo, pero la lógica de negocio vive en su propio `services.py`"). Usa `select_for_update()` con hilos reales probados en test — mismo patrón que la concurrencia de apertura de turno, y el que la sección 8 ya pedía portar de `deduct_stock_fefo`. No hace selección FEFO automática: el lote ya viene elegido por quien llama (`SaleDetail.batch` es explícito, no auto-asignado) — FEFO automático queda como posible mejora futura, no pedida todavía.
+- **`TenantScopedFieldsMixin` no se usa en los serializers anidados de líneas/pagos** (`SaleLineInputSerializer`, `PaymentInputSerializer`) — un serializer anidado declarado como atributo de clase (`details = XSerializer(many=True)`) se instancia una sola vez al importar el módulo, sin `request` disponible todavía, así que el mixin no tendría nada que acotar (el `context` con el `request` real solo llega después, vía `bind()`). `product_id`/`batch_id` se resuelven a mano contra `.objects.for_user(...)` en el ViewSet — mismo patrón ya usado en `OpenShiftInputSerializer.cash_register_id`. El mixin sí se usa en el campo top-level `cash_shift` de `SaleCreateSerializer`, que sí se instancia una vez por request con contexto real.
 
 **Sale**
 | Campo | Tipo | Nota |
 |---|---|---|
-| branch, cash_register, shift | FKs | |
-| client | FK Client, nullable | Para venta con fiado |
-| client_uuid | UUID, unique | **Nuevo — idempotencia para offline** |
-| occurred_at | datetime | **Nuevo — distinto de `created_at`, lo declara el cliente** |
+| branch, cash_register, cash_shift | FKs | `cash_shift` es el nombre real del modelo de turno (`CashShift`, no `Shift`) — `branch`/`cash_register` se guardan denormalizados, derivados de `cash_shift` en `save()` |
+| client | — | **Pendiente, ver nota arriba** — no existe hasta el punto 5 (`customers`) |
+| client_uuid | UUID, unique | Idempotencia para offline — sin default de modelo, ver punto 3 arriba |
+| occurred_at | datetime | Distinto de `created_at`, lo declara el cliente — ver punto 3 arriba |
 | created_at | datetime (auto_now_add) | Cuándo llegó al servidor |
-| subtotal, discount_amount, tax_amount, total | Decimal | El cálculo de impuestos se construye desde cero (confirmado que `tax_percentage` no se usaba en Zenith Pharma) |
+| subtotal, discount_amount, tax_amount, total | Decimal | `tax_amount` es la suma de `SaleDetail.tax_amount` — ver punto 2 arriba |
 | status | choices: `COMPLETED`, `CANCELLED`, `REFUNDED` | |
 
 **SaleDetail**
@@ -121,14 +132,16 @@ Cada feature es dueña de su propio estado (Context o similar, como ya usan) y s
 | sale | FK Sale | |
 | product | FK Product | |
 | batch | FK Batch, **nullable** | Cambio clave: ya no obligatoria |
-| quantity, unit_price, tax_rate_applied | Decimal | |
+| quantity | Decimal(10,3) | Fraccionaria — ver punto 1 arriba |
+| unit_price, tax_rate_applied | Decimal | |
+| tax_amount | Decimal | **Agregado en construcción, no estaba en la tabla original** — ver punto 2 arriba |
 
 **Payment** *(nuevo — habilita pago dividido, no existía en Zenith Pharma)*
 | Campo | Tipo | Nota |
 |---|---|---|
 | sale | FK Sale | |
-| method | choices: `CASH`, `CARD`, `TRANSFER`, `CREDIT` | |
-| amount | Decimal | Una venta puede tener N registros Payment que suman el total |
+| method | choices: `CASH`, `CARD`, `TRANSFER`, `CREDIT` | `CREDIT` no cuenta en el arqueo de caja (ver nota de `compute_expected_totals` arriba) ni tiene contabilidad de fiado todavía (pendiente de `customers`) |
+| amount | Decimal | Una venta puede tener N registros Payment que suman el total — `sales.services.create_sale` rechaza toda la venta (rollback completo) si no suman exacto |
 
 ### 4.3 `catalog`
 
