@@ -1,0 +1,66 @@
+import { Button } from '@/components/ui/button'
+import { formatCurrency } from '@/lib/format'
+import { t } from '@/i18n'
+import { allowsFractionalQuantity, lineTotal, type CartLine } from '@/features/sales/cart'
+
+interface CartViewProps {
+  lines: CartLine[]
+  onChangeQuantity: (productId: number, quantity: number) => void
+  onRemove: (productId: number) => void
+}
+
+export function CartView({ lines, onChangeQuantity, onRemove }: CartViewProps) {
+  if (lines.length === 0) {
+    return <p className="text-lg text-ink/60">{t.sale.emptyCart}</p>
+  }
+
+  return (
+    <ul className="flex flex-col gap-3">
+      {lines.map((line) => {
+        const step = allowsFractionalQuantity(line.product) ? 0.1 : 1
+        const min = step
+        return (
+          <li
+            key={line.product.id}
+            className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border-2 border-border bg-white px-5 py-4"
+          >
+            <div className="min-w-40 flex-1">
+              <p className="text-xl font-medium text-ink">{line.product.name}</p>
+              <p className="text-lg text-ink/60">{formatCurrency(line.product.sale_price)} c/u</p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <label className="sr-only" htmlFor={`quantity-${line.product.id}`}>
+                {t.sale.quantity}
+              </label>
+              <input
+                id={`quantity-${line.product.id}`}
+                type="number"
+                min={min}
+                step={step}
+                value={line.quantity}
+                onChange={(event) => {
+                  const value = Number(event.target.value)
+                  if (value > 0) onChangeQuantity(line.product.id, value)
+                }}
+                className="h-14 w-24 rounded-xl border-2 border-border text-center text-xl text-ink"
+              />
+            </div>
+
+            <p className="w-28 text-right text-xl font-bold text-ink">{formatCurrency(lineTotal(line))}</p>
+
+            <Button
+              type="button"
+              variant="cancel"
+              size="compact"
+              onClick={() => onRemove(line.product.id)}
+              aria-label={`${t.sale.remove} ${line.product.name}`}
+            >
+              {t.sale.remove}
+            </Button>
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
