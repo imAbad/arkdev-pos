@@ -27,6 +27,21 @@ export async function openShift(cashRegisterId: number, openingBalance: string):
   return response.data
 }
 
+/** Arqueo ciego a propósito: el backend solo calcula/revela expected_*
+ * DESPUÉS de recibir lo que el cajero contó — nunca se le pide al backend
+ * el expected_* por adelantado. */
+export async function closeShift(
+  shiftId: number,
+  actualClosingBalance: string,
+  actualVoucherTotal: string,
+): Promise<CashShift> {
+  const response = await apiClient.post<CashShift>(`/cash-shifts/${shiftId}/close-shift/`, {
+    actual_closing_balance: actualClosingBalance,
+    actual_voucher_total: actualVoucherTotal,
+  })
+  return response.data
+}
+
 export interface CreateSaleLineInput {
   product_id: number
   batch_id?: number

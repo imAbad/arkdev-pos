@@ -12,6 +12,7 @@ import { CartView } from '@/features/sales/CartView'
 import { PaymentPanel } from '@/features/sales/PaymentPanel'
 import { SaleConfirmation } from '@/features/sales/SaleConfirmation'
 import { Ticket } from '@/features/sales/Ticket'
+import { CloseShiftScreen } from '@/features/shift/CloseShiftScreen'
 import { cartTotal, type CartLine } from '@/features/sales/cart'
 import type { CashShift, PaymentMethod, Product, Sale } from '@/types/api'
 
@@ -30,6 +31,7 @@ export function SaleScreen({ shift }: SaleScreenProps) {
   const [confirmingCancel, setConfirmingCancel] = useState(false)
   const [completed, setCompleted] = useState<{ sale: Sale; changeGiven: number } | null>(null)
   const [viewingTicket, setViewingTicket] = useState(false)
+  const [closingShift, setClosingShift] = useState(false)
 
   function addToCart(product: Product) {
     setCart((current) => {
@@ -91,6 +93,10 @@ export function SaleScreen({ shift }: SaleScreenProps) {
     } finally {
       setSubmitting(false)
     }
+  }
+
+  if (closingShift) {
+    return <CloseShiftScreen shift={shift} onCancel={() => setClosingShift(false)} />
   }
 
   if (completed && viewingTicket) {
@@ -159,6 +165,15 @@ export function SaleScreen({ shift }: SaleScreenProps) {
             disabled={cart.length === 0}
           >
             {t.sale.cancelSale}
+          </Button>
+
+          <Button
+            type="button"
+            variant="neutral"
+            className="mt-4 w-full"
+            onClick={() => setClosingShift(true)}
+          >
+            {t.closeShift.openButton}
           </Button>
         </Card>
       </div>
