@@ -47,6 +47,26 @@ describe('Sidebar — link de Reportes (punto 2: mismo acceso para Supervisor qu
   })
 })
 
+describe('Sidebar — links de Inventario y Tickets (observación de sesión, punto 2: mismo acceso que Reportes)', () => {
+  it('los muestra a un ADMINISTRADOR', () => {
+    renderSidebar(makeProfile({ role: 'ADMINISTRADOR' }))
+    expect(screen.getByRole('link', { name: t.inventory.navLink })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: t.salesHistory.navLink })).toBeInTheDocument()
+  })
+
+  it('los muestra a un Supervisor (CAJERO con can_authorize_exceptions)', () => {
+    renderSidebar(makeProfile({ role: 'CAJERO', capabilities: { can_authorize_exceptions: true } }))
+    expect(screen.getByRole('link', { name: t.inventory.navLink })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: t.salesHistory.navLink })).toBeInTheDocument()
+  })
+
+  it('NO los muestra a un CAJERO plano', () => {
+    renderSidebar(makeProfile({ role: 'CAJERO', capabilities: { handles_cash: true } }))
+    expect(screen.queryByRole('link', { name: t.inventory.navLink })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: t.salesHistory.navLink })).not.toBeInTheDocument()
+  })
+})
+
 describe('Sidebar — links exclusivos de ADMINISTRADOR (módulos, relacionados, usuarios, mi negocio)', () => {
   it('los muestra todos a un ADMINISTRADOR', () => {
     renderSidebar(makeProfile({ role: 'ADMINISTRADOR' }))

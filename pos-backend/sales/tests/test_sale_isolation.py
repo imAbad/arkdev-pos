@@ -9,6 +9,7 @@ from catalog.tests.factories import create_batch
 from customers.tests.factories import create_client
 from sales.models import Sale
 from sales.tests.factories import create_checkout_context, make_sale
+from tenants.models import UserProfile
 from tenants.tests.factories import create_user_with_profile
 
 
@@ -63,16 +64,26 @@ class SaleApiTests(APITestCase):
         self.assertEqual(response.data['payments'][0]['reference'], 'AUTH-1234')
 
     def test_list_sales_only_returns_own_tenant(self):
+        # Observación de sesión, punto 2: listar ventas es
+        # ADMINISTRADOR/Supervisor (mismo nivel que reportes), no
+        # cualquier cajero con handles_cash — se autentica con un admin
+        # del tenant A para probar el aislamiento sin chocar con ese gate.
+        admin_a, _ = create_user_with_profile(
+            'admin-a@donchuy.test', self.ctx_a['branch'], role=UserProfile.Role.ADMINISTRADOR,
+        )
         sale_a = make_sale(self.ctx_a['shift'], self.ctx_a['product'])
         make_sale(self.ctx_b['shift'], self.ctx_b['product'])
-        self._auth(self.ctx_a['user'])
+        self._auth(admin_a)
         response = self.client.get('/api/v1/sales/')
         ids = [row['id'] for row in response.data['results']]
         self.assertEqual(ids, [sale_a.id])
 
     def test_cannot_retrieve_other_tenant_sale(self):
+        admin_a, _ = create_user_with_profile(
+            'admin-a@donchuy.test', self.ctx_a['branch'], role=UserProfile.Role.ADMINISTRADOR,
+        )
         sale_b = make_sale(self.ctx_b['shift'], self.ctx_b['product'])
-        self._auth(self.ctx_a['user'])
+        self._auth(admin_a)
         response = self.client.get(f'/api/v1/sales/{sale_b.id}/')
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
@@ -113,12 +124,38 @@ class SaleApiTests(APITestCase):
         self.assertEqual(Sale.objects.count(), 0)
 
     def test_user_without_handles_cash_capability_is_denied(self):
+        # Doblemente denegado hoy: ni maneja caja ni es admin/supervisor
+        # — el gate que realmente aplica a list/retrieve es este último
+        # (ver test_plain_cajero_cannot_list_or_retrieve_sales abajo).
         cajero, _ = create_user_with_profile(
             'sincaja@donchuy.test', self.ctx_a['branch'], capabilities={'handles_cash': False},
         )
         self._auth(cajero)
         response = self.client.get('/api/v1/sales/')
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_plain_cajero_cannot_list_or_retrieve_sales(self):
+        # Observación de sesión, punto 2: listar/ver el historial de
+        # ventas es ADMINISTRADOR/Supervisor, mismo nivel que reportes —
+        # un cajero con handles_cash=True (puede vender) sigue sin poder
+        # navegar el historial completo.
+        sale_a = make_sale(self.ctx_a['shift'], self.ctx_a['product'])
+        self._auth(self.ctx_a['user'])
+        list_response = self.client.get('/api/v1/sales/')
+        self.assertEqual(list_response.status_code, status.HTTP_403_FORBIDDEN)
+        retrieve_response = self.client.get(f'/api/v1/sales/{sale_a.id}/')
+        self.assertEqual(retrieve_response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_supervisor_can_list_and_retrieve_sales(self):
+        supervisor, _ = create_user_with_profile(
+            'supervisor-a@donchuy.test', self.ctx_a['branch'], capabilities={'can_authorize_exceptions': True},
+        )
+        sale_a = make_sale(self.ctx_a['shift'], self.ctx_a['product'])
+        self._auth(supervisor)
+        list_response = self.client.get('/api/v1/sales/')
+        self.assertEqual(list_response.status_code, status.HTTP_200_OK)
+        retrieve_response = self.client.get(f'/api/v1/sales/{sale_a.id}/')
+        self.assertEqual(retrieve_response.status_code, status.HTTP_200_OK)
 
     def test_unauthenticated_request_is_rejected(self):
         response = self.client.get('/api/v1/sales/')

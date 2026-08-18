@@ -136,6 +136,7 @@ export function makeSale(overrides: Partial<Sale> = {}): Sale {
     client_email: null,
     client_uuid: '11111111-1111-1111-1111-111111111111',
     occurred_at: '2026-08-18T12:05:00Z',
+    cashier_email: 'cajero@donchuy.test',
     subtotal: '18.00',
     discount_amount: '0.00',
     tax_amount: '2.88',

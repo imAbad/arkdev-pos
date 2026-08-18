@@ -80,12 +80,15 @@ class SaleSerializer(serializers.ModelSerializer):
     # existe cuando la venta tiene Client asociado (fiado) y ese cliente
     # ya tiene email guardado; el campo de envío nunca lo exige.
     client_email = serializers.CharField(source='client.email', read_only=True, default=None)
+    # Observación de sesión, punto 2: quién cobró la venta — necesario
+    # para la columna "Cajero" del historial de ventas (nuevo).
+    cashier_email = serializers.CharField(source='cash_shift.user.email', read_only=True)
 
     class Meta:
         model = Sale
         fields = [
             'id', 'branch', 'cash_register', 'cash_shift', 'client', 'client_name', 'client_email',
-            'client_uuid', 'occurred_at',
+            'client_uuid', 'occurred_at', 'cashier_email',
             'subtotal', 'discount_amount', 'tax_amount', 'total', 'status',
             'details', 'payments', 'company', 'created_at',
         ]

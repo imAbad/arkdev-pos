@@ -317,6 +317,20 @@ class CatalogInventoryPermissionBoundaryTests(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
+    def test_batches_can_be_filtered_by_product(self):
+        # Observación de sesión, punto 2: la pantalla de Inventario pide
+        # los lotes de UN producto a la vez.
+        other_product = create_product(self.tenant['company'], name='Otro producto', sku='OTRO-1')
+        create_batch(self.product, self.tenant['branch'], batch_number='DEL-PRODUCTO')
+        create_batch(other_product, self.tenant['branch'], batch_number='DE-OTRO')
+
+        self._auth(self.tenant['user'])
+        response = self.client.get('/api/v1/batches/', {'product': self.product.id})
+
+        # setUp ya crea self.batch ('L-1') para self.product también.
+        numbers = {row['batch_number'] for row in response.data['results']}
+        self.assertEqual(numbers, {'L-1', 'DEL-PRODUCTO'})
+
     def test_plain_cajero_cannot_read_or_create_batches(self):
         self._auth(self.cajero)
         get_response = self.client.get('/api/v1/batches/')

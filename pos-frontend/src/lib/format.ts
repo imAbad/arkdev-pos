@@ -33,3 +33,15 @@ export function formatDate(isoDateString: string): string {
   const [year, month, day] = isoDateString.split('-').map(Number)
   return dateFormatter.format(new Date(year, month - 1, day))
 }
+
+/** Default de filtros de fecha (reportes, historial de ventas): hoy y
+ * "hace N días", en formato YYYY-MM-DD para <input type="date">. */
+export function todayIso(): string {
+  return new Date().toISOString().slice(0, 10)
+}
+
+export function daysAgoIso(days: number): string {
+  const date = new Date()
+  date.setDate(date.getDate() - days)
+  return date.toISOString().slice(0, 10)
+}

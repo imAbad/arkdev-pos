@@ -5,7 +5,7 @@ from rest_framework.response import Response
 
 from catalog.models import Batch, Product
 from core.mixins import TenantScopedViewSetMixin
-from core.permissions import HandlesCash
+from core.permissions import HandlesCash, IsAdministratorOrSupervisor
 from sales.emails import TicketEmailError, send_sale_ticket_email
 from sales.models import CashRegister, CashShift, Sale
 from sales.serializers import (
@@ -125,7 +125,29 @@ class SaleViewSet(TenantScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
 
     queryset = Sale.objects.all()
     serializer_class = SaleSerializer
-    permission_classes = [IsAuthenticated, HandlesCash]
+
+    def get_permissions(self):
+        # Observación de sesión, punto 2: listar/ver el historial completo
+        # de ventas (posiblemente de otros cajeros) es una función de
+        # supervisión, mismo nivel que reportes — no HandlesCash genérico.
+        # Las acciones de negocio (crear venta, mandar ticket, cancelar)
+        # se quedan en HandlesCash tal cual (cancelar ya tiene su propio
+        # gate real, el token de supervisor — ver sales.services.cancel_sale).
+        if self.action in ('list', 'retrieve'):
+            return [IsAuthenticated(), IsAdministratorOrSupervisor()]
+        return [IsAuthenticated(), HandlesCash()]
+
+    def get_queryset(self):
+        qs = super().get_queryset().select_related('cash_shift__user', 'client').order_by('-occurred_at')
+        if self.action != 'list':
+            return qs
+        date_from = self.request.query_params.get('date_from')
+        date_to = self.request.query_params.get('date_to')
+        if date_from:
+            qs = qs.filter(occurred_at__date__gte=date_from)
+        if date_to:
+            qs = qs.filter(occurred_at__date__lte=date_to)
+        return qs
 
     @action(detail=False, methods=['post'], url_path='create-sale')
     def create_sale(self, request):

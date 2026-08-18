@@ -4,7 +4,7 @@ import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { apiErrorMessage } from '@/lib/api-client'
-import { formatCurrency, formatDate, formatDateTime } from '@/lib/format'
+import { daysAgoIso, formatCurrency, formatDate, formatDateTime, todayIso } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { t } from '@/i18n'
 import { listBranches } from '@/services/api/tenantsApi'
@@ -46,16 +46,6 @@ const TABS: { key: ReportKey; label: string; usesDateRange: boolean; usesDaysWin
   { key: 'closures', label: t.reports.tabCashShiftClosures, usesDateRange: true },
 ]
 
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10)
-}
-
-function thirtyDaysAgoIso(): string {
-  const date = new Date()
-  date.setDate(date.getDate() - 30)
-  return date.toISOString().slice(0, 10)
-}
-
 type ReportData =
   | { key: 'product'; rows: SalesByProductRow[] }
   | { key: 'category'; rows: SalesByCategoryRow[] }
@@ -67,7 +57,7 @@ type ReportData =
 
 export function ReportsScreen() {
   const [activeReport, setActiveReport] = useState<ReportKey>('product')
-  const [dateFrom, setDateFrom] = useState(thirtyDaysAgoIso())
+  const [dateFrom, setDateFrom] = useState(daysAgoIso(30))
   const [dateTo, setDateTo] = useState(todayIso())
   const [branches, setBranches] = useState<Branch[]>([])
   const [branchId, setBranchId] = useState<number | null>(null)

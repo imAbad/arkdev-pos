@@ -55,3 +55,14 @@ class BatchViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
     # escritura. Otro gap real encontrado igual que Category/Supplier:
     # este viewset solo tenía IsAuthenticated.
     permission_classes = [IsAuthenticated, IsAdministratorOrSupervisor]
+
+    def get_queryset(self):
+        # Observación de sesión, punto 2: la pantalla de Inventario
+        # necesita los lotes de UN producto a la vez — sin django-filter
+        # instalado (no se agrega solo por esto), se filtra a mano igual
+        # que SaleViewSet.get_queryset() ya hace con date_from/date_to.
+        qs = super().get_queryset().order_by('expiration_date')
+        product_id = self.request.query_params.get('product')
+        if product_id:
+            qs = qs.filter(product_id=product_id)
+        return qs

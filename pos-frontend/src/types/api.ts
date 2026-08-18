@@ -110,6 +110,35 @@ export interface Product {
   company: number
 }
 
+export interface Category {
+  id: number
+  name: string
+  slug: string
+  is_active: boolean
+  company: number
+}
+
+export interface Supplier {
+  id: number
+  name: string
+  contact_name: string
+  phone: string
+  email: string
+  company: number
+}
+
+export interface Batch {
+  id: number
+  product: number
+  branch: number
+  batch_number: string
+  initial_quantity: number
+  current_quantity: number
+  expiration_date: string
+  received_date: string
+  company: number
+}
+
 export interface LowStockRow {
   product_id: number
   product_name: string
@@ -152,6 +181,7 @@ export interface Sale {
   client_email: string | null
   client_uuid: string
   occurred_at: string
+  cashier_email: string
   subtotal: string
   discount_amount: string
   tax_amount: string

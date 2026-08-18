@@ -10,6 +10,8 @@ import { UserManagementScreen } from '@/features/admin/UserManagementScreen'
 import { StoreBrandingScreen } from '@/features/admin/StoreBrandingScreen'
 import { RelatedProductsScreen } from '@/features/catalog/RelatedProductsScreen'
 import { LowStockScreen } from '@/features/catalog/LowStockScreen'
+import { InventoryScreen } from '@/features/catalog/InventoryScreen'
+import { SalesHistoryScreen } from '@/features/sales/SalesHistoryScreen'
 import { AppLayout } from '@/components/app-layout'
 import { isAdministrator, isAdministratorOrSupervisor } from '@/lib/permissions'
 import { getCurrentShift } from '@/services/api/salesApi'
@@ -72,6 +74,22 @@ function AuthedApp() {
             element={
               <RequireAdminOrSupervisor>
                 <ReportsScreen />
+              </RequireAdminOrSupervisor>
+            }
+          />
+          <Route
+            path="/inventario"
+            element={
+              <RequireAdminOrSupervisor>
+                <InventoryScreen />
+              </RequireAdminOrSupervisor>
+            }
+          />
+          <Route
+            path="/ventas"
+            element={
+              <RequireAdminOrSupervisor>
+                <SalesHistoryScreen />
               </RequireAdminOrSupervisor>
             }
           />

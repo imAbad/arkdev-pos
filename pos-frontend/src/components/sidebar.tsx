@@ -36,6 +36,8 @@ export function Sidebar() {
       )}
 
       {isAdministratorOrSupervisor(profile) && <SidebarLink to="/reportes">{t.reports.navLink}</SidebarLink>}
+      {isAdministratorOrSupervisor(profile) && <SidebarLink to="/inventario">{t.inventory.navLink}</SidebarLink>}
+      {isAdministratorOrSupervisor(profile) && <SidebarLink to="/ventas">{t.salesHistory.navLink}</SidebarLink>}
 
       {isAdministrator(profile) && (
         <>

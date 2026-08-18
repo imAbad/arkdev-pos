@@ -98,3 +98,16 @@ export async function cancelSale(saleId: number, supervisorAuthorizationToken: s
   })
   return response.data
 }
+
+/** Observación de sesión, punto 2: historial de ventas — mismo endpoint
+ * de solo lectura que ya existía (GET /sales/), ahora con filtro de
+ * fecha y orden más reciente primero del lado del backend. Devuelve
+ * solo la primera página (25, PAGE_SIZE default) — suficiente para el
+ * rango de fechas típico de este filtro; paginar más allá de eso queda
+ * para cuando alguien lo necesite de verdad. */
+export async function listSales(dateFrom?: string, dateTo?: string): Promise<Sale[]> {
+  const response = await apiClient.get<Paginated<Sale>>('/sales/', {
+    params: { date_from: dateFrom, date_to: dateTo },
+  })
+  return response.data.results
+}
