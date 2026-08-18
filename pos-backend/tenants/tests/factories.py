@@ -33,13 +33,19 @@ def create_user_with_profile(
     return user, profile
 
 
-def create_full_tenant(company_name, branch_name, user_email, role=UserProfile.Role.CAJERO):
+def create_full_tenant(
+    company_name,
+    branch_name,
+    user_email,
+    role=UserProfile.Role.CAJERO,
+    capabilities=None,
+):
     """Arma un tenant completo (company + branch + settings + usuario con
     profile) para no repetir el setup en cada test de aislamiento."""
     company = create_company(name=company_name)
     branch = create_branch(company, name=branch_name)
     settings_ = create_company_settings(company)
-    user, profile = create_user_with_profile(user_email, branch, role=role)
+    user, profile = create_user_with_profile(user_email, branch, role=role, capabilities=capabilities)
     return {
         'company': company,
         'branch': branch,

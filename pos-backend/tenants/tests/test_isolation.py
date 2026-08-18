@@ -6,11 +6,11 @@ tocar datos de otro, sin importar si se consulta el manager directo o la API.
 No basta con probar el happy path de un solo tenant — cada test aquí arma
 DOS tenants y confirma la frontera entre ambos explícitamente.
 """
-from django.test import TestCase
+from django.test import Client, TestCase
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from tenants.models import Branch, CompanySettings, UserProfile
+from tenants.models import Branch, CompanySettings, User, UserProfile
 from tenants.tests.factories import create_full_tenant
 
 
@@ -109,3 +109,79 @@ class BranchApiIsolationTests(APITestCase):
     def test_unauthenticated_request_is_rejected(self):
         response = self.client.get('/api/v1/branches/')
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class StaffAndSuperuserAccessTests(APITestCase):
+    """`is_staff`/`is_superuser` NO son un bypass de aislamiento hoy.
+
+    Por diseño (ver arquitectura_tecnica_pos.md §4.1 nota de super-admin y
+    decisiones_post_auditoria.md §4 "Bandera de modo soporte auditado"): el
+    acceso de staff/soporte cross-tenant es una pieza greenfield pendiente
+    (SupportAccessLog), pospuesta a propósito mientras haya 1-pocos clientes
+    y solo tú/Carlos tengan is_staff. Hasta que eso se construya, un usuario
+    is_staff/is_superuser que pega contra la API con TenantScopedViewSetMixin
+    se comporta EXACTAMENTE igual que cualquier otro usuario: ve su propio
+    tenant si tiene profile, y nada si no lo tiene. La única vía de acceso
+    verdaderamente sin restricción de tenant es el admin de Django (uso
+    interno de desarrollo, CLAUDE.md #4), que usa el manager sin filtrar.
+    """
+
+    def setUp(self):
+        self.tenant_a = create_full_tenant('Abarrotes Don Chuy', 'Centro', 'admin@donchuy.test')
+        self.tenant_b = create_full_tenant('Papelería La Estrella', 'Norte', 'admin@estrella.test')
+
+    def test_superuser_without_profile_sees_nothing_via_scoped_api(self):
+        superuser = User.objects.create_superuser(email='root@arkdev.test', password='testpass123')
+        self.client.force_authenticate(user=superuser)
+        response = self.client.get('/api/v1/branches/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['results'], [])
+
+    def test_staff_without_profile_cannot_retrieve_any_tenant_branch_by_id(self):
+        staff = User.objects.create_user(email='staff@arkdev.test', password='testpass123', is_staff=True)
+        self.client.force_authenticate(user=staff)
+        for branch in (self.tenant_a['branch'], self.tenant_b['branch']):
+            with self.subTest(branch=branch):
+                response = self.client.get(f'/api/v1/branches/{branch.id}/')
+                self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_staff_with_profile_is_scoped_like_any_other_user(self):
+        # Que un usuario sea is_staff no lo saca del filtro de tenant si de
+        # todos modos tiene un UserProfile ligado a una branch/company.
+        staff = User.objects.create_user(email='staff@donchuy.test', password='testpass123', is_staff=True)
+        UserProfile.objects.create(
+            user=staff,
+            branch=self.tenant_a['branch'],
+            role=UserProfile.Role.ADMINISTRADOR,
+        )
+        self.client.force_authenticate(user=staff)
+
+        response = self.client.get('/api/v1/branches/')
+        ids = [row['id'] for row in response.data['results']]
+        self.assertEqual(ids, [self.tenant_a['branch'].id])
+
+        cross_tenant = self.client.get(f"/api/v1/branches/{self.tenant_b['branch'].id}/")
+        self.assertEqual(cross_tenant.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_unscoped_manager_used_by_django_admin_sees_every_tenant(self):
+        # Este es el único camino hoy con visibilidad cross-tenant real:
+        # Model.objects.all() sin pasar por for_user()/for_company(), que es
+        # justo lo que usa ModelAdmin.get_queryset() por default.
+        all_branches = set(Branch.objects.all())
+        self.assertSetEqual(
+            all_branches,
+            {self.tenant_a['branch'], self.tenant_b['branch']},
+        )
+
+    def test_staff_user_can_log_into_django_admin(self):
+        staff = User.objects.create_user(email='staff@arkdev.test', password='testpass123', is_staff=True)
+        client = Client()
+        client.force_login(staff)
+        response = client.get('/admin/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_non_staff_user_is_redirected_out_of_django_admin(self):
+        client = Client()
+        client.force_login(self.tenant_a['user'])
+        response = client.get('/admin/')
+        self.assertEqual(response.status_code, status.HTTP_302_FOUND)
