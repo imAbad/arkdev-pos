@@ -3,6 +3,7 @@ import type {
   CashShiftClosureRow,
   ExpiredStockRow,
   InventoryValuationRow,
+  SalesByCashierRow,
   SalesByCategoryRow,
   SalesByProductRow,
 } from '@/types/api'
@@ -31,6 +32,13 @@ export async function getSalesByProduct(filters: DateRangeReportFilters): Promis
 export async function getSalesByCategory(filters: DateRangeReportFilters): Promise<SalesByCategoryRow[]> {
   const response = await apiClient.get<SalesByCategoryRow[]>('/reports/sales-by-product/', {
     params: { date_from: filters.dateFrom, date_to: filters.dateTo, group_by: 'category', ...branchParam(filters.branchId) },
+  })
+  return response.data
+}
+
+export async function getSalesByCashier(filters: DateRangeReportFilters): Promise<SalesByCashierRow[]> {
+  const response = await apiClient.get<SalesByCashierRow[]>('/reports/sales-by-product/', {
+    params: { date_from: filters.dateFrom, date_to: filters.dateTo, group_by: 'cashier', ...branchParam(filters.branchId) },
   })
   return response.data
 }

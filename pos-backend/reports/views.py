@@ -2,14 +2,14 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from core.permissions import IsAdministrator
+from core.permissions import IsAdministratorOrSupervisor
 from reports import services
 from reports.serializers import (
     BranchOnlyReportQuerySerializer,
     DateRangeReportQuerySerializer,
     SalesByProductQuerySerializer,
 )
-from tenants.models import Branch
+from tenants.models import Branch, UserProfile
 
 
 def _resolve_branch(request, branch_id):
@@ -26,8 +26,19 @@ def _resolve_branch(request, branch_id):
     return branch, None
 
 
+def _resolve_cashier(request, user_id):
+    """Mismo criterio anti-IDOR que _resolve_branch, vía UserProfile (User
+    no tiene manager tenant-scoped propio, la company vive en el profile)."""
+    if user_id is None:
+        return None, None
+    profile = UserProfile.objects.for_user(request.user).filter(user_id=user_id).first()
+    if profile is None:
+        return None, Response({'detail': 'Cajero no encontrado.'}, status=404)
+    return profile.user, None
+
+
 class SalesByProductReportView(APIView):
-    permission_classes = [IsAuthenticated, IsAdministrator]
+    permission_classes = [IsAuthenticated, IsAdministratorOrSupervisor]
 
     def get(self, request):
         query = SalesByProductQuerySerializer(data=request.query_params)
@@ -37,19 +48,23 @@ class SalesByProductReportView(APIView):
         branch, error_response = _resolve_branch(request, data.get('branch'))
         if error_response is not None:
             return error_response
+        cashier, error_response = _resolve_cashier(request, data.get('cashier'))
+        if error_response is not None:
+            return error_response
 
         rows = services.sales_by_product(
             company=request.user.profile.company,
             date_from=data['date_from'],
             date_to=data['date_to'],
             branch=branch,
+            cashier=cashier,
             group_by=data['group_by'],
         )
         return Response(rows)
 
 
 class InventoryValuationReportView(APIView):
-    permission_classes = [IsAuthenticated, IsAdministrator]
+    permission_classes = [IsAuthenticated, IsAdministratorOrSupervisor]
 
     def get(self, request):
         query = BranchOnlyReportQuerySerializer(data=request.query_params)
@@ -64,7 +79,7 @@ class InventoryValuationReportView(APIView):
 
 
 class ExpiredStockReportView(APIView):
-    permission_classes = [IsAuthenticated, IsAdministrator]
+    permission_classes = [IsAuthenticated, IsAdministratorOrSupervisor]
 
     def get(self, request):
         query = BranchOnlyReportQuerySerializer(data=request.query_params)
@@ -79,7 +94,7 @@ class ExpiredStockReportView(APIView):
 
 
 class CashShiftClosuresReportView(APIView):
-    permission_classes = [IsAuthenticated, IsAdministrator]
+    permission_classes = [IsAuthenticated, IsAdministratorOrSupervisor]
 
     def get(self, request):
         query = DateRangeReportQuerySerializer(data=request.query_params)
@@ -100,7 +115,7 @@ class CashShiftClosuresReportView(APIView):
 
 
 class SalesByPaymentMethodReportView(APIView):
-    permission_classes = [IsAuthenticated, IsAdministrator]
+    permission_classes = [IsAuthenticated, IsAdministratorOrSupervisor]
 
     def get(self, request):
         query = DateRangeReportQuerySerializer(data=request.query_params)

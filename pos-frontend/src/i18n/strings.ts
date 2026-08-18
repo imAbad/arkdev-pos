@@ -138,6 +138,7 @@ export const es = {
     empty: 'No hay datos para este filtro.',
     tabSalesByProduct: 'Ventas por producto',
     tabSalesByCategory: 'Ventas por categoría',
+    tabSalesByCashier: 'Ventas por cajero',
     tabInventoryValuation: 'Valuación de inventario',
     tabExpiredStock: 'Mermas por caducidad',
     tabCashShiftClosures: 'Cierres de caja',

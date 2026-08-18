@@ -11,9 +11,9 @@ from rest_framework.test import APITestCase
 
 from catalog.tests.factories import create_batch, create_category, create_product
 from reports import services
-from sales.services import close_shift, compute_expected_totals
-from sales.tests.factories import create_checkout_context, make_sale
-from tenants.tests.factories import create_full_tenant
+from sales.services import close_shift, compute_expected_totals, open_shift
+from sales.tests.factories import create_cash_register, create_checkout_context, make_sale
+from tenants.tests.factories import create_full_tenant, create_user_with_profile
 from tenants.models import UserProfile
 
 
@@ -65,6 +65,39 @@ class SalesByProductServiceTests(TestCase):
             company=self.ctx['company'], date_from=self.today, date_to=self.today, branch=other_ctx['branch'],
         )
         self.assertEqual(rows, [])
+
+    def test_grouped_by_cashier_splits_revenue_per_seller(self):
+        # Punto 2: trazabilidad de vendedor — el dato ya existía en la
+        # cadena Sale -> CashShift -> user, esto solo la expone agrupada.
+        other_user, _ = create_user_with_profile(
+            'otro-cajero@donchuy.test', self.ctx['branch'], capabilities={'handles_cash': True},
+        )
+        other_shift = open_shift(user=other_user, cash_register=create_cash_register(self.ctx['branch'], name='Caja 2'))
+
+        make_sale(self.ctx['shift'], self.ctx['product'], quantity=Decimal('1'), unit_price=Decimal('10.00'))
+        make_sale(other_shift, self.ctx['product'], quantity=Decimal('1'), unit_price=Decimal('50.00'))
+
+        rows = services.sales_by_product(
+            company=self.ctx['company'], date_from=self.today, date_to=self.today, group_by='cashier',
+        )
+        by_email = {row['cashier_email']: row['revenue'] for row in rows}
+        self.assertEqual(by_email[self.ctx['user'].email], Decimal('10.00'))  # revenue = subtotal, no incluye iva (columna aparte)
+        self.assertEqual(by_email['otro-cajero@donchuy.test'], Decimal('50.00'))
+
+    def test_cashier_filter_scopes_product_grouping_to_one_seller(self):
+        other_user, _ = create_user_with_profile(
+            'otro-cajero@donchuy.test', self.ctx['branch'], capabilities={'handles_cash': True},
+        )
+        other_shift = open_shift(user=other_user, cash_register=create_cash_register(self.ctx['branch'], name='Caja 2'))
+
+        make_sale(self.ctx['shift'], self.ctx['product'], quantity=Decimal('1'), unit_price=Decimal('10.00'))
+        make_sale(other_shift, self.ctx['product'], quantity=Decimal('1'), unit_price=Decimal('50.00'))
+
+        rows = services.sales_by_product(
+            company=self.ctx['company'], date_from=self.today, date_to=self.today, cashier=other_user,
+        )
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['revenue'], Decimal('50.00'))
 
 
 class InventoryValuationServiceTests(TestCase):
@@ -166,6 +199,32 @@ class ReportsApiPermissionTests(APITestCase):
 
     def test_cajero_without_administrador_role_is_denied(self):
         self._auth(self.ctx['user'])  # CAJERO por default en create_checkout_context
+        response = self.client.get(
+            '/api/v1/reports/sales-by-product/',
+            {'date_from': self.today, 'date_to': self.today},
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_cajero_with_can_authorize_exceptions_can_read_all_four_reports(self):
+        from tenants.tests.factories import create_user_with_profile
+        supervisor, _ = create_user_with_profile(
+            'supervisor@donchuy.test', self.ctx['branch'],
+            role=UserProfile.Role.CAJERO, capabilities={'can_authorize_exceptions': True},
+        )
+        self._auth(supervisor)
+
+        endpoints = [
+            ('/api/v1/reports/sales-by-product/', {'date_from': self.today, 'date_to': self.today}),
+            ('/api/v1/reports/inventory-valuation/', {}),
+            ('/api/v1/reports/expired-stock/', {}),
+            ('/api/v1/reports/cash-shift-closures/', {'date_from': self.today, 'date_to': self.today}),
+        ]
+        for url, params in endpoints:
+            response = self.client.get(url, params)
+            self.assertEqual(response.status_code, status.HTTP_200_OK, f'{url} -> {response.status_code}')
+
+    def test_cajero_without_can_authorize_exceptions_still_gets_403(self):
+        self._auth(self.ctx['user'])  # handles_cash=True pero sin can_authorize_exceptions
         response = self.client.get(
             '/api/v1/reports/sales-by-product/',
             {'date_from': self.today, 'date_to': self.today},

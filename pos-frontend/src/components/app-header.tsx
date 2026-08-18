@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/features/auth/AuthProvider'
 import { useNavigation } from '@/App'
+import { isAdministratorOrSupervisor } from '@/lib/permissions'
 import { t } from '@/i18n'
 
 /** Barra de marca — azul (accent_color del tenant), solo para
@@ -9,7 +10,7 @@ export function AppHeader() {
   const { companySettings, branch, profile, logout } = useAuth()
   const { view, openReports } = useNavigation()
   const businessName = companySettings?.business_name?.trim() || t.common.appName
-  const showReportsLink = view === 'main' && profile?.role === 'ADMINISTRADOR'
+  const showReportsLink = view === 'main' && isAdministratorOrSupervisor(profile)
 
   return (
     <header className="flex items-center justify-between gap-4 bg-accent px-6 py-4 text-white">

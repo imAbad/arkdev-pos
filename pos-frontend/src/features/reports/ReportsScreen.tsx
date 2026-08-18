@@ -14,6 +14,7 @@ import {
   getCashShiftClosures,
   getExpiredStock,
   getInventoryValuation,
+  getSalesByCashier,
   getSalesByCategory,
   getSalesByProduct,
 } from '@/services/api/reportsApi'
@@ -22,15 +23,17 @@ import type {
   CashShiftClosureRow,
   ExpiredStockRow,
   InventoryValuationRow,
+  SalesByCashierRow,
   SalesByCategoryRow,
   SalesByProductRow,
 } from '@/types/api'
 
-type ReportKey = 'product' | 'category' | 'inventory' | 'expired' | 'closures'
+type ReportKey = 'product' | 'category' | 'cashier' | 'inventory' | 'expired' | 'closures'
 
 const TABS: { key: ReportKey; label: string; usesDateRange: boolean }[] = [
   { key: 'product', label: t.reports.tabSalesByProduct, usesDateRange: true },
   { key: 'category', label: t.reports.tabSalesByCategory, usesDateRange: true },
+  { key: 'cashier', label: t.reports.tabSalesByCashier, usesDateRange: true },
   { key: 'inventory', label: t.reports.tabInventoryValuation, usesDateRange: false },
   { key: 'expired', label: t.reports.tabExpiredStock, usesDateRange: false },
   { key: 'closures', label: t.reports.tabCashShiftClosures, usesDateRange: true },
@@ -49,6 +52,7 @@ function thirtyDaysAgoIso(): string {
 type ReportData =
   | { key: 'product'; rows: SalesByProductRow[] }
   | { key: 'category'; rows: SalesByCategoryRow[] }
+  | { key: 'cashier'; rows: SalesByCashierRow[] }
   | { key: 'inventory'; rows: InventoryValuationRow[] }
   | { key: 'expired'; rows: ExpiredStockRow[] }
   | { key: 'closures'; rows: CashShiftClosureRow[] }
@@ -79,6 +83,9 @@ export function ReportsScreen() {
           break
         case 'category':
           setData({ key: 'category', rows: await getSalesByCategory(filters) })
+          break
+        case 'cashier':
+          setData({ key: 'cashier', rows: await getSalesByCashier(filters) })
           break
         case 'inventory':
           setData({ key: 'inventory', rows: await getInventoryValuation({ branchId }) })
@@ -199,6 +206,8 @@ function ReportTable({ data }: { data: ReportData }) {
       return <SalesByProductTable rows={data.rows} />
     case 'category':
       return <SalesByCategoryTable rows={data.rows} />
+    case 'cashier':
+      return <SalesByCashierTable rows={data.rows} />
     case 'inventory':
       return <InventoryValuationTable rows={data.rows} />
     case 'expired':
@@ -249,6 +258,21 @@ function SalesByCategoryTable({ rows }: { rows: SalesByCategoryRow[] }) {
       {rows.map((row) => (
         <tr key={row.category_id ?? row.category_name} className="border-b border-border">
           <td className="px-3 py-2">{row.category_name}</td>
+          <td className="px-3 py-2">{row.quantity_sold}</td>
+          <td className="px-3 py-2">{formatCurrency(row.revenue)}</td>
+          <td className="px-3 py-2">{formatCurrency(row.tax)}</td>
+        </tr>
+      ))}
+    </TableShell>
+  )
+}
+
+function SalesByCashierTable({ rows }: { rows: SalesByCashierRow[] }) {
+  return (
+    <TableShell headers={[t.reports.colCashier, t.reports.colQuantitySold, t.reports.colRevenue, t.reports.colTax]}>
+      {rows.map((row) => (
+        <tr key={row.cashier_id} className="border-b border-border">
+          <td className="px-3 py-2">{row.cashier_email}</td>
           <td className="px-3 py-2">{row.quantity_sold}</td>
           <td className="px-3 py-2">{formatCurrency(row.revenue)}</td>
           <td className="px-3 py-2">{formatCurrency(row.tax)}</td>

@@ -21,11 +21,15 @@ from catalog.models import Batch
 from sales.models import CashShift, Payment, Sale, SaleDetail
 
 
-def sales_by_product(*, company, date_from, date_to, branch=None, group_by='product'):
+def sales_by_product(*, company, date_from, date_to, branch=None, cashier=None, group_by='product'):
     """`group_by='product'` -> una fila por producto (con su categoría como
-    columna de contexto). `group_by='category'` -> una fila por categoría,
-    sumando todos sus productos — mismo dato, dos formas de leerlo, sin
-    duplicar la consulta.
+    columna de contexto). `group_by='category'` -> una fila por categoría.
+    `group_by='cashier'` -> una fila por cajero (punto 2: "ventas por
+    cajero" ya estaba en la especificación original §8 — la trazabilidad
+    de quién vendió no requirió ningún campo nuevo, `Sale.cash_shift.user`
+    ya existía desde que CashShift existe; esto solo lo expone). `cashier`
+    (aparte de group_by) filtra cualquiera de los tres modos a lo que
+    vendió un cajero específico, sin cambiar cómo se agrupan las filas.
 
     `revenue` se calcula como `Sum(quantity * unit_price)`, no
     `Sum('subtotal')` — `SaleDetail.subtotal` es una `@property` de Python
@@ -42,6 +46,8 @@ def sales_by_product(*, company, date_from, date_to, branch=None, group_by='prod
     )
     if branch is not None:
         qs = qs.filter(sale__branch=branch)
+    if cashier is not None:
+        qs = qs.filter(sale__cash_shift__user=cashier)
 
     if group_by == 'category':
         qs = qs.values('product__category__id', 'product__category__name')
@@ -52,6 +58,15 @@ def sales_by_product(*, company, date_from, date_to, branch=None, group_by='prod
             revenue=Sum(revenue_expr),
             tax=Sum('tax_amount'),
         ).values('category_id', 'category_name', 'quantity_sold', 'revenue', 'tax')
+    elif group_by == 'cashier':
+        qs = qs.values('sale__cash_shift__user__id', 'sale__cash_shift__user__email')
+        qs = qs.annotate(
+            cashier_id=F('sale__cash_shift__user__id'),
+            cashier_email=F('sale__cash_shift__user__email'),
+            quantity_sold=Sum('quantity'),
+            revenue=Sum(revenue_expr),
+            tax=Sum('tax_amount'),
+        ).values('cashier_id', 'cashier_email', 'quantity_sold', 'revenue', 'tax')
     else:
         qs = qs.values('product__id', 'product__name', 'product__category__name')
         qs = qs.annotate(

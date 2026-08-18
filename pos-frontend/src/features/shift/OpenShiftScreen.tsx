@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { apiErrorMessage } from '@/lib/api-client'
 import { formatDateTime } from '@/lib/format'
 import { listCashRegisters, getShiftForRegister, openShift } from '@/services/api/salesApi'
+import { isAdministratorOrSupervisor } from '@/lib/permissions'
 import { t } from '@/i18n'
 import type { CashRegister, CashShift } from '@/types/api'
 import { useAuth } from '@/features/auth/AuthProvider'
@@ -171,7 +172,7 @@ function ConflictResolution({
   onChooseAnother: () => void
 }) {
   const isMine = profile !== null && shift.user === profile.id
-  const hasAuthority = profile?.role === 'ADMINISTRADOR' || Boolean(profile?.capabilities.can_authorize_exceptions)
+  const hasAuthority = isAdministratorOrSupervisor(profile)
 
   if (isMine) {
     return (

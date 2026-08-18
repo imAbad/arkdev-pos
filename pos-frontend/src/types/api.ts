@@ -159,6 +159,14 @@ export interface SalesByCategoryRow {
   tax: string
 }
 
+export interface SalesByCashierRow {
+  cashier_id: number
+  cashier_email: string
+  quantity_sold: string
+  revenue: string
+  tax: string
+}
+
 export interface InventoryValuationRow {
   product_id: number
   product_name: string

@@ -53,13 +53,31 @@ HandlesCash = capability_required('handles_cash')
 
 
 class IsAdministrator(BasePermission):
-    """Gate por rol, no por capability — reportes financieros son
-    visibilidad de administrador (ver pos_especificacion_funcional.md §2,
-    tabla de roles), no una operación de caja que un CAJERO con la
-    capability correcta pueda desbloquear."""
+    """Gate por rol, no por capability — para lo que es EXCLUSIVO del
+    dueño/gerente (usuarios, precios/costos, configuración de tenant):
+    ni siquiera un Supervisor (CAJERO + can_authorize_exceptions) puede
+    entrar por aquí. Ver IsAdministratorOrSupervisor para lo que sí
+    comparten ambos."""
 
     message = 'Esta acción requiere el rol de administrador.'
 
     def has_permission(self, request, view):
         profile = getattr(request.user, 'profile', None)
         return profile is not None and profile.role == profile.Role.ADMINISTRADOR
+
+
+class IsAdministratorOrSupervisor(BasePermission):
+    """ADMINISTRADOR o CAJERO con can_authorize_exceptions — 'Supervisor'
+    no es un rol propio en este modelo (decisiones_post_auditoria.md §5),
+    es este mismo criterio ya usado para el override de cierre de turno
+    ajeno (sales.services.close_shift). Reportes, exportación y gestión
+    de inventario (no de precio/catálogo) usan este gate: visibilidad y
+    autoridad operativa amplia, no exclusiva del dueño."""
+
+    message = 'Esta acción requiere permisos de administrador o supervisor.'
+
+    def has_permission(self, request, view):
+        profile = getattr(request.user, 'profile', None)
+        if profile is None:
+            return False
+        return profile.role == profile.Role.ADMINISTRADOR or bool(profile.capabilities.get('can_authorize_exceptions'))
