@@ -1,26 +1,31 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import axios from 'axios'
 import { AppHeader } from '@/components/app-header'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { apiErrorMessage } from '@/lib/api-client'
-import { listCashRegisters, openShift } from '@/services/api/salesApi'
+import { formatDateTime } from '@/lib/format'
+import { listCashRegisters, getShiftForRegister, openShift } from '@/services/api/salesApi'
 import { t } from '@/i18n'
 import type { CashRegister, CashShift } from '@/types/api'
 import { useAuth } from '@/features/auth/AuthProvider'
+import { CloseShiftScreen } from '@/features/shift/CloseShiftScreen'
 
 interface OpenShiftScreenProps {
   onShiftOpened: (shift: CashShift) => void
 }
 
 export function OpenShiftScreen({ onShiftOpened }: OpenShiftScreenProps) {
-  const { branch } = useAuth()
+  const { branch, profile } = useAuth()
   const [registers, setRegisters] = useState<CashRegister[] | null>(null)
   const [registerId, setRegisterId] = useState<number | null>(null)
   const [openingBalance, setOpeningBalance] = useState('0')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [conflictShift, setConflictShift] = useState<CashShift | 'loading' | null>(null)
+  const [closingConflict, setClosingConflict] = useState(false)
 
   useEffect(() => {
     listCashRegisters().then((all) => {
@@ -39,10 +44,54 @@ export function OpenShiftScreen({ onShiftOpened }: OpenShiftScreenProps) {
       const shift = await openShift(registerId, openingBalance)
       onShiftOpened(shift)
     } catch (err) {
-      setError(apiErrorMessage(err, t.shift.errorGeneric))
+      if (axios.isAxiosError(err) && err.response?.data?.code === 'register_already_open') {
+        setConflictShift('loading')
+        const existing = await getShiftForRegister(registerId)
+        setConflictShift(existing)
+      } else {
+        setError(apiErrorMessage(err, t.shift.errorGeneric))
+      }
     } finally {
       setSubmitting(false)
     }
+  }
+
+  if (closingConflict && conflictShift && conflictShift !== 'loading') {
+    return (
+      <CloseShiftScreen
+        shift={conflictShift}
+        onCancel={() => setClosingConflict(false)}
+        onClosed={() => {
+          setClosingConflict(false)
+          setConflictShift(null)
+        }}
+      />
+    )
+  }
+
+  if (conflictShift) {
+    return (
+      <div className="flex min-h-svh flex-col bg-surface-muted">
+        <AppHeader />
+        <div className="flex flex-1 items-center justify-center p-6">
+          <Card className="w-full max-w-md">
+            <h1 className="text-3xl font-bold text-ink">{t.shift.conflictTitle}</h1>
+
+            {conflictShift === 'loading' ? (
+              <p className="mt-8 text-lg text-ink/70">{t.shift.conflictLoading}</p>
+            ) : (
+              <ConflictResolution
+                shift={conflictShift}
+                profile={profile}
+                onContinueSelling={() => onShiftOpened(conflictShift)}
+                onCloseThisShift={() => setClosingConflict(true)}
+                onChooseAnother={() => setConflictShift(null)}
+              />
+            )}
+          </Card>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -104,6 +153,72 @@ export function OpenShiftScreen({ onShiftOpened }: OpenShiftScreenProps) {
           )}
         </Card>
       </div>
+    </div>
+  )
+}
+
+function ConflictResolution({
+  shift,
+  profile,
+  onContinueSelling,
+  onCloseThisShift,
+  onChooseAnother,
+}: {
+  shift: CashShift
+  profile: ReturnType<typeof useAuth>['profile']
+  onContinueSelling: () => void
+  onCloseThisShift: () => void
+  onChooseAnother: () => void
+}) {
+  const isMine = profile !== null && shift.user === profile.id
+  const hasAuthority = profile?.role === 'ADMINISTRADOR' || Boolean(profile?.capabilities.can_authorize_exceptions)
+
+  if (isMine) {
+    return (
+      <div className="mt-8 flex flex-col gap-4">
+        <p className="text-lg text-ink/70">{t.shift.conflictOwnedByYouNotice}</p>
+        <Button type="button" variant="confirm" size="large" onClick={onContinueSelling}>
+          {t.shift.conflictContinueSelling}
+        </Button>
+        <Button type="button" variant="neutral" onClick={onChooseAnother}>
+          {t.shift.conflictChooseAnother}
+        </Button>
+      </div>
+    )
+  }
+
+  if (hasAuthority) {
+    return (
+      <div className="mt-8 flex flex-col gap-4">
+        <div className="rounded-2xl border-2 border-border p-5">
+          <p className="text-lg text-ink">
+            {t.shift.conflictOpenedBy}: <span className="font-semibold">{shift.user_email}</span>
+          </p>
+          <p className="mt-1 text-lg text-ink">
+            {t.shift.conflictOpenedAt}: <span className="font-semibold">{formatDateTime(shift.opened_at)}</span>
+          </p>
+        </div>
+        <Button type="button" variant="confirm" size="large" onClick={onCloseThisShift}>
+          {t.shift.conflictCloseThisShift}
+        </Button>
+        <Button type="button" variant="neutral" onClick={onContinueSelling}>
+          {t.shift.conflictEnterToSell}
+        </Button>
+        <Button type="button" variant="neutral" onClick={onChooseAnother}>
+          {t.shift.conflictChooseAnother}
+        </Button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-8 flex flex-col gap-4">
+      <p role="alert" className="text-lg font-medium text-cancel">
+        {t.shift.conflictNoPermission}
+      </p>
+      <Button type="button" variant="neutral" onClick={onChooseAnother}>
+        {t.shift.conflictChooseAnother}
+      </Button>
     </div>
   )
 }

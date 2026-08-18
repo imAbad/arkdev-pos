@@ -15,6 +15,14 @@ class ShiftError(Exception):
     """Error de regla de negocio al abrir/cerrar turno (-> 400)."""
 
 
+class RegisterAlreadyOpenError(ShiftError):
+    """La caja seleccionada ya tiene un turno abierto (de quien sea) — se
+    distingue de ShiftError genérico porque el frontend necesita reaccionar
+    distinto: en vez de solo mostrar el mensaje, ofrece continuar/cerrar/
+    vender en el turno existente (punto 0, bug real reportado: admin
+    quedaba varado sin ninguna acción disponible)."""
+
+
 class ShiftPermissionError(Exception):
     """Quien intenta la acción no tiene autoridad para hacerla (-> 403)."""
 
@@ -54,6 +62,8 @@ def open_shift(*, user, cash_register, opening_balance=Decimal('0')):
         raise ShiftError('La caja está inactiva.')
     if CashShift.objects.filter(user=user, status=CashShift.Status.OPEN).exists():
         raise ShiftError('Ya tienes un turno abierto.')
+    if CashShift.objects.filter(cash_register=cash_register, status=CashShift.Status.OPEN).exists():
+        raise RegisterAlreadyOpenError('Esta caja ya tiene un turno abierto.')
 
     try:
         with transaction.atomic():
@@ -66,7 +76,7 @@ def open_shift(*, user, cash_register, opening_balance=Decimal('0')):
         # Garantía real contra la condición de carrera: el UniqueConstraint
         # parcial en CashShift.Meta, no el filter() de arriba (que es
         # solo un chequeo "amigable" para dar buen mensaje de error).
-        raise ShiftError('Esta caja ya tiene un turno abierto.')
+        raise RegisterAlreadyOpenError('Esta caja ya tiene un turno abierto.')
 
 
 def close_shift(*, shift, closing_user, actual_closing_balance, actual_voucher_total=Decimal('0')):

@@ -14,7 +14,7 @@ from audit.models import AuditLog
 from catalog.tests.factories import create_product
 from customers.tests.factories import create_client
 from sales.models import CashRegister, CashShift
-from sales.services import ShiftError, ShiftPermissionError, close_shift, open_shift
+from sales.services import RegisterAlreadyOpenError, ShiftError, ShiftPermissionError, close_shift, open_shift
 from sales.tests.factories import create_cash_register, make_sale
 from tenants.models import User, UserProfile
 from tenants.tests.factories import create_branch, create_full_tenant, create_user_with_profile
@@ -92,15 +92,17 @@ class OpenShiftServiceTests(TestCase):
         with self.assertRaises(ShiftError):
             open_shift(user=self.tenant['user'], cash_register=self.register)
 
-    def test_second_open_on_already_open_register_raises_shift_error(self):
+    def test_second_open_on_already_open_register_raises_register_already_open_error(self):
         # Otro usuario (sin turno propio abierto) intenta abrir turno en una
-        # caja que YA tiene turno abierto de alguien más — pasa los checks
-        # previos y choca con el UniqueConstraint, traducido a ShiftError.
+        # caja que YA tiene turno abierto de alguien más — se distingue de
+        # un ShiftError genérico (subclase específica) para que el
+        # frontend pueda ofrecer continuar/cerrar/vender en el existente
+        # en vez de solo mostrar el mensaje (punto 0).
         open_shift(user=self.tenant['user'], cash_register=self.register)
         other_user, _ = create_user_with_profile(
             'cajero2@donchuy.test', self.tenant['branch'], capabilities={'handles_cash': True},
         )
-        with self.assertRaises(ShiftError):
+        with self.assertRaises(RegisterAlreadyOpenError):
             open_shift(user=other_user, cash_register=self.register)
 
 
@@ -331,6 +333,55 @@ class CashShiftApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
         self.tenant_a_shift = CashShift.objects.get(id=shift_a_id)
         self.assertEqual(self.tenant_a_shift.status, CashShift.Status.OPEN)
+
+    def test_open_shift_on_already_open_register_returns_409_with_machine_readable_code(self):
+        self._auth(self.tenant_a['user'])
+        self.client.post('/api/v1/cash-shifts/open-shift/', {'cash_register_id': self.register_a.id}, format='json')
+
+        other_user, _ = create_user_with_profile(
+            'otro@donchuy.test', self.tenant_a['branch'], capabilities={'handles_cash': True},
+        )
+        self._auth(other_user)
+        response = self.client.post(
+            '/api/v1/cash-shifts/open-shift/', {'cash_register_id': self.register_a.id}, format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertEqual(response.data['code'], 'register_already_open')
+
+    def test_for_register_returns_the_open_shift_of_any_user_same_tenant(self):
+        self._auth(self.tenant_a['user'])
+        open_res = self.client.post(
+            '/api/v1/cash-shifts/open-shift/', {'cash_register_id': self.register_a.id}, format='json',
+        )
+        shift_id = open_res.data['id']
+
+        other_user, _ = create_user_with_profile(
+            'otro@donchuy.test', self.tenant_a['branch'], capabilities={'handles_cash': True},
+        )
+        self._auth(other_user)
+        response = self.client.get(
+            '/api/v1/cash-shifts/for-register/', {'cash_register_id': self.register_a.id},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['id'], shift_id)
+        self.assertEqual(response.data['user_email'], self.tenant_a['user'].email)
+
+    def test_for_register_404_when_register_has_no_open_shift(self):
+        self._auth(self.tenant_a['user'])
+        response = self.client.get(
+            '/api/v1/cash-shifts/for-register/', {'cash_register_id': self.register_a.id},
+        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_for_register_does_not_leak_other_tenant_shift(self):
+        self._auth(self.tenant_b['user'])
+        self.client.post('/api/v1/cash-shifts/open-shift/', {'cash_register_id': self.register_b.id}, format='json')
+
+        self._auth(self.tenant_a['user'])
+        response = self.client.get(
+            '/api/v1/cash-shifts/for-register/', {'cash_register_id': self.register_b.id},
+        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_user_without_handles_cash_capability_is_denied(self):
         cajero, _ = create_user_with_profile(

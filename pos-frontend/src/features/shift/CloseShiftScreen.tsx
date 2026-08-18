@@ -15,13 +15,20 @@ import type { CashShift } from '@/types/api'
 interface CloseShiftScreenProps {
   shift: CashShift
   onCancel: () => void
+  /** Cuando se provee, el resultado ofrece un botón extra además de
+   * "Cerrar sesión" — caso de uso: admin/supervisor cerró el turno
+   * ajeno de una caja varada (punto 0) y quiere volver a "Abrir turno"
+   * en vez de forzosamente cerrar sesión. Si se omite (uso normal desde
+   * SaleScreen, cerrando el propio turno), el resultado se comporta
+   * igual que antes — un único botón. */
+  onClosed?: () => void
 }
 
 /** Arqueo ciego por diseño: el cajero declara actual_* sin ver expected_*
  * primero — el backend solo revela expected_* en la respuesta DESPUÉS de
  * recibir lo declarado (ver services.close_shift). No mostrar el
  * expected_* antes de enviar, ni siquiera en un cálculo local. */
-export function CloseShiftScreen({ shift, onCancel }: CloseShiftScreenProps) {
+export function CloseShiftScreen({ shift, onCancel, onClosed }: CloseShiftScreenProps) {
   const { logout } = useAuth()
   const [actualCash, setActualCash] = useState('0')
   const [actualVoucher, setActualVoucher] = useState('0')
@@ -63,7 +70,12 @@ export function CloseShiftScreen({ shift, onCancel }: CloseShiftScreenProps) {
               difference={result.voucher_difference}
             />
 
-            <Button variant="neutral" size="large" className="mt-8 w-full" onClick={logout}>
+            {onClosed && (
+              <Button variant="confirm" size="large" className="mt-8 w-full" onClick={onClosed}>
+                {t.closeShift.continueNext}
+              </Button>
+            )}
+            <Button variant="neutral" size="large" className={cn('w-full', onClosed ? 'mt-4' : 'mt-8')} onClick={logout}>
               {t.closeShift.logoutNext}
             </Button>
           </Card>

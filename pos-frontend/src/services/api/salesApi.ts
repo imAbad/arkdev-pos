@@ -19,6 +19,21 @@ export async function getCurrentShift(): Promise<CashShift | null> {
   }
 }
 
+/** null si esa caja no tiene un turno abierto — no es un error (404), se
+ * resuelve así igual que getCurrentShift(). Devuelve el turno abierto sea
+ * de quien sea (no filtra por usuario), a diferencia de getCurrentShift. */
+export async function getShiftForRegister(cashRegisterId: number): Promise<CashShift | null> {
+  try {
+    const response = await apiClient.get<CashShift>('/cash-shifts/for-register/', {
+      params: { cash_register_id: cashRegisterId },
+    })
+    return response.data
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 404) return null
+    throw error
+  }
+}
+
 export async function openShift(cashRegisterId: number, openingBalance: string): Promise<CashShift> {
   const response = await apiClient.post<CashShift>('/cash-shifts/open-shift/', {
     cash_register_id: cashRegisterId,

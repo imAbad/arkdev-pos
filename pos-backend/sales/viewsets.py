@@ -15,7 +15,7 @@ from sales.serializers import (
     SaleCreateSerializer,
     SaleSerializer,
 )
-from sales.services import SaleError, ShiftError, ShiftPermissionError
+from sales.services import RegisterAlreadyOpenError, SaleError, ShiftError, ShiftPermissionError
 from sales.services import close_shift as close_shift_service
 from sales.services import create_sale as create_sale_service
 from sales.services import open_shift as open_shift_service
@@ -46,6 +46,27 @@ class CashShiftViewSet(TenantScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
             return Response({'detail': 'No tienes un turno abierto.'}, status=status.HTTP_404_NOT_FOUND)
         return Response(self.get_serializer(shift).data)
 
+    @action(detail=False, methods=['get'], url_path='for-register')
+    def for_register(self, request):
+        # A diferencia de `current` (solo el turno del usuario logueado),
+        # esto expone el turno abierto de una caja sea de quien sea —
+        # necesario para que admin/supervisor puedan VER que hay un turno
+        # varado ahí antes de decidir qué hacer con él (punto 0). Ver
+        # también qué puede HACER con ese turno depende de su rol/
+        # capability, pero verlo (quién lo abrió, cuándo) no requiere esa
+        # autoridad — mismo criterio que ya usa close_shift para permitir
+        # el override, no uno nuevo.
+        cash_register_id = request.query_params.get('cash_register_id')
+        if not cash_register_id:
+            return Response({'detail': 'cash_register_id es requerido.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        shift = self.get_queryset().filter(
+            cash_register_id=cash_register_id, status=CashShift.Status.OPEN,
+        ).select_related('user', 'cash_register').first()
+        if shift is None:
+            return Response({'detail': 'Esta caja no tiene un turno abierto.'}, status=status.HTTP_404_NOT_FOUND)
+        return Response(self.get_serializer(shift).data)
+
     @action(detail=False, methods=['post'], url_path='open-shift')
     def open_shift(self, request):
         input_serializer = OpenShiftInputSerializer(data=request.data)
@@ -63,6 +84,8 @@ class CashShiftViewSet(TenantScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
                 cash_register=cash_register,
                 opening_balance=input_serializer.validated_data['opening_balance'],
             )
+        except RegisterAlreadyOpenError as exc:
+            return Response({'code': 'register_already_open', 'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         except ShiftError as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
