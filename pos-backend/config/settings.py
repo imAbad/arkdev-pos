@@ -118,4 +118,9 @@ REST_FRAMEWORK = {
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(hours=8),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    # Separado de SECRET_KEY a propósito: brief_infraestructura_carlos.md §3
+    # ya lo nombra como su propio secret en Key Vault (rotar uno sin afectar
+    # el otro). Si no se define, cae al default de SimpleJWT (SECRET_KEY) —
+    # así no rompe entornos que todavía no lo configuraron.
+    'SIGNING_KEY': config('JWT_SIGNING_KEY', default=SECRET_KEY),
 }

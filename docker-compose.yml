@@ -1,0 +1,37 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${DB_NAME:-arkdev_pos_dev}
+      POSTGRES_USER: ${DB_USER:-arkdev}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-arkdev_dev_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-arkdev} -d ${DB_NAME:-arkdev_pos_dev}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./pos-backend
+    volumes:
+      - ./pos-backend:/app
+    ports:
+      - "8000:8000"
+    environment:
+      SECRET_KEY: ${SECRET_KEY:-dev-only-insecure-secret-key-change-me}
+      DEBUG: ${DEBUG:-True}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      DB_NAME: ${DB_NAME:-arkdev_pos_dev}
+      DB_USER: ${DB_USER:-arkdev}
+      DB_PASSWORD: ${DB_PASSWORD:-arkdev_dev_password}
+      DB_HOST: db
+      DB_PORT: 5432
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
