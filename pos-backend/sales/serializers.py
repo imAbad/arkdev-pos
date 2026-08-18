@@ -2,27 +2,21 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
+from core.serializers import TenantScopedFieldsMixin
 from sales.models import CashRegister, CashShift
-from tenants.models import Branch
 
 
-class CashRegisterSerializer(serializers.ModelSerializer):
+class CashRegisterSerializer(TenantScopedFieldsMixin, serializers.ModelSerializer):
+    # `branch` cruza hacia otro modelo con su propio scoping — sin acotarlo,
+    # un usuario podría pasar el id de una branch de OTRO tenant y la
+    # company de la caja terminaría derivándose de esa branch ajena
+    # (CashRegister.save() deriva company de branch.company).
+    tenant_scoped_fields = ('branch',)
+
     class Meta:
         model = CashRegister
         fields = ['id', 'branch', 'name', 'is_active', 'company', 'created_at', 'updated_at']
         read_only_fields = ['company', 'created_at', 'updated_at']
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # `branch` cruza hacia otro modelo con su propio scoping — sin esto,
-        # un usuario podría pasar el id de una branch de OTRO tenant y la
-        # company de la caja terminaría derivándose de esa branch ajena
-        # (CashRegister.save() deriva company de branch.company). Se acota
-        # el queryset al tenant del request para que un id ajeno sea
-        # simplemente "no existe", igual que el resto de la API.
-        request = self.context.get('request')
-        if request is not None and 'branch' in self.fields:
-            self.fields['branch'].queryset = Branch.objects.for_user(request.user)
 
 
 class CashShiftSerializer(serializers.ModelSerializer):
