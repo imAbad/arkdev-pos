@@ -12,16 +12,18 @@ import type { Branch, CompanySettings, UserProfile } from '@/types/api'
 // core.exceptions.api_exception_handler. Nunca se muestra tal cual (ver
 // principio de diseño: nada de inglés/jerga visible) — se traduce aquí
 // según el código HTTP, no se usa apiErrorMessage() para este caso.
-function loginErrorMessage(error: unknown): string {
+// Exportada (no solo interna) para poder fijar el mapeo con un test
+// directo — ver AuthProvider.test.tsx.
+export function loginErrorMessage(error: unknown): string {
   if (axios.isAxiosError(error) && error.response?.status === 401) {
     return t.login.errorInvalid
   }
   return t.login.errorGeneric
 }
 
-type AuthStatus = 'loading' | 'unauthenticated' | 'authenticated'
+export type AuthStatus = 'loading' | 'unauthenticated' | 'authenticated'
 
-interface AuthContextValue {
+export interface AuthContextValue {
   status: AuthStatus
   profile: UserProfile | null
   branch: Branch | null
@@ -32,7 +34,12 @@ interface AuthContextValue {
   logout: () => void
 }
 
-const AuthContext = createContext<AuthContextValue | null>(null)
+// Exportado para que los tests de pantallas individuales (OpenShiftScreen,
+// SaleScreen) puedan renderizar con <AuthContext.Provider value={...}>
+// directo, sin pasar por un login real vía MSW cada vez — ver
+// src/test/test-utils.tsx::renderWithAuth. AuthProvider sigue siendo la
+// única forma real de producir ese value en la app.
+export const AuthContext = createContext<AuthContextValue | null>(null)
 
 // Login por email confirma el tenant (no hay subdominio propio por
 // cliente — decisiones_post_auditoria.md §5) — por eso la pantalla de
