@@ -428,3 +428,27 @@ class CurrentShiftEndpointTests(APITestCase):
         self._auth(self.tenant_a['user'])
         response = self.client.get('/api/v1/cash-shifts/current/')
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_administrador_without_any_capability_can_see_current_shift(self):
+        # Bug real encontrado probando la app a mano con admin@fortuna.test
+        # del seed: un ADMINISTRADOR recién creado (capabilities={}, el
+        # estado correcto por default) recibía 403 "No tienes la capability
+        # requerida" en vez de la visibilidad administrativa básica que le
+        # corresponde. 404 aquí es el comportamiento correcto (no tiene
+        # turno abierto) — lo importante es que NO sea 403.
+        admin, _ = create_user_with_profile(
+            'admin@donchuy.test', self.tenant_a['branch'],
+            role=UserProfile.Role.ADMINISTRADOR, capabilities={},
+        )
+        self._auth(admin)
+        response = self.client.get('/api/v1/cash-shifts/current/')
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+        shift = open_shift(user=self.tenant_a['user'], cash_register=self.register_a)
+        response = self.client.get('/api/v1/cash-shifts/current/')
+        # El admin no es dueño del turno (lo abrió otro cajero) — current
+        # sigue siendo "mi propio turno abierto", esto solo confirma que
+        # ya no lo bloquea el permiso, no que vea turnos ajenos.
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertNotEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertIsNotNone(shift)

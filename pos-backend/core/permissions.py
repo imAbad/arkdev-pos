@@ -25,6 +25,17 @@ class HasCapability(BasePermission):
         if profile is None:
             return False
 
+        # ADMINISTRADOR pasa cualquier gate de capability sin tener que
+        # tenerla marcada explícitamente en su JSON — mismo criterio que
+        # ya usaba sales.services.close_shift (is_admin or is_override) y
+        # que la especificación pide: ver/operar la caja es visibilidad y
+        # autoridad administrativa básica, no algo que dependa de que
+        # alguien le haya prendido un flag a mano. Bug real encontrado
+        # probando la app a mano: admin@fortuna.test (ADMINISTRADOR,
+        # capabilities={}) no podía ni ver el turno actual.
+        if profile.role == profile.Role.ADMINISTRADOR:
+            return True
+
         return bool(profile.capabilities.get(capability))
 
 

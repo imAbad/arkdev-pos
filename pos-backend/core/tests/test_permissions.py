@@ -9,7 +9,7 @@ from django.test import TestCase
 
 from core.permissions import CanAuthorizeExceptions, HandlesCash, HasCapability, capability_required
 from tenants.tests.factories import create_branch, create_company, create_user_with_profile
-from tenants.models import User
+from tenants.models import User, UserProfile
 
 
 class FakeRequest:
@@ -81,3 +81,28 @@ class HasCapabilityPermissionTests(TestCase):
     def test_no_capability_configured_allows_by_default(self):
         user = self._user_with_capabilities('cajero@donchuy.test', {})
         self.assertTrue(HasCapability().has_permission(FakeRequest(user), FakeView()))
+
+    def test_administrador_passes_any_capability_gate_with_empty_capabilities(self):
+        # Bug real encontrado probando la app a mano: un ADMINISTRADOR
+        # recién creado (capabilities={}, el estado correcto por default,
+        # no un error del seed) no podía ni ver el turno actual porque el
+        # endpoint exigía handles_cash. Ver/operar la caja es autoridad
+        # administrativa básica, no algo que dependa de un flag a mano.
+        admin, _ = create_user_with_profile(
+            'admin@donchuy.test', self.branch, role=UserProfile.Role.ADMINISTRADOR, capabilities={},
+        )
+        self.assertTrue(HandlesCash().has_permission(FakeRequest(admin), FakeView()))
+        self.assertTrue(CanAuthorizeExceptions().has_permission(FakeRequest(admin), FakeView()))
+
+    def test_administrador_passes_even_if_capability_explicitly_false(self):
+        admin, _ = create_user_with_profile(
+            'admin2@donchuy.test', self.branch,
+            role=UserProfile.Role.ADMINISTRADOR, capabilities={'handles_cash': False},
+        )
+        self.assertTrue(HandlesCash().has_permission(FakeRequest(admin), FakeView()))
+
+    def test_plain_cajero_still_needs_the_capability(self):
+        # El bypass es solo para ADMINISTRADOR — no se relajó la regla
+        # para todo el mundo.
+        cajero, _ = create_user_with_profile('cajero2@donchuy.test', self.branch, capabilities={})
+        self.assertFalse(HandlesCash().has_permission(FakeRequest(cajero), FakeView()))
