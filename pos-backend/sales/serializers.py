@@ -50,10 +50,18 @@ class CloseShiftInputSerializer(serializers.Serializer):
 
 class SaleDetailSerializer(serializers.ModelSerializer):
     subtotal = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    # El ticket de venta (frontend) necesita mostrar el nombre del producto,
+    # no solo su id — Sale ya queda self-contained para reimprimir/ver un
+    # ticket después sin tener que cruzar con el catálogo aparte.
+    product_name = serializers.CharField(source='product.name', read_only=True)
+    product_unit_type = serializers.CharField(source='product.unit_type', read_only=True)
 
     class Meta:
         model = SaleDetail
-        fields = ['id', 'product', 'batch', 'quantity', 'unit_price', 'tax_rate_applied', 'tax_amount', 'subtotal']
+        fields = [
+            'id', 'product', 'product_name', 'product_unit_type', 'batch',
+            'quantity', 'unit_price', 'tax_rate_applied', 'tax_amount', 'subtotal',
+        ]
         read_only_fields = fields
 
 

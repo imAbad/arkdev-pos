@@ -98,6 +98,8 @@ export type PaymentMethod = 'CASH' | 'CARD' | 'TRANSFER' | 'CREDIT'
 export interface SaleDetail {
   id: number
   product: number
+  product_name: string
+  product_unit_type: UnitType
   batch: number | null
   quantity: string
   unit_price: string

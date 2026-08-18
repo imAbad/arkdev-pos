@@ -7,11 +7,12 @@ interface SaleConfirmationProps {
   sale: Sale
   changeGiven: number
   onNewSale: () => void
+  onViewTicket: () => void
 }
 
 /** Pantalla completa, no un toast — la confirmación de que se cobró bien
  * es lo más importante que la persona necesita ver en todo el flujo. */
-export function SaleConfirmation({ sale, changeGiven, onNewSale }: SaleConfirmationProps) {
+export function SaleConfirmation({ sale, changeGiven, onNewSale, onViewTicket }: SaleConfirmationProps) {
   return (
     <div className="flex min-h-svh flex-col items-center justify-center gap-8 bg-confirm p-6 text-center text-white">
       <div className="flex h-28 w-28 items-center justify-center rounded-full bg-white/20 text-6xl">✓</div>
@@ -29,9 +30,14 @@ export function SaleConfirmation({ sale, changeGiven, onNewSale }: SaleConfirmat
         )}
       </div>
 
-      <Button variant="neutral" size="large" onClick={onNewSale}>
-        {t.confirmation.newSale}
-      </Button>
+      <div className="flex w-full max-w-sm flex-col gap-4">
+        <Button variant="neutral" size="large" onClick={onViewTicket}>
+          {t.confirmation.viewTicket}
+        </Button>
+        <Button variant="neutral" size="large" onClick={onNewSale}>
+          {t.confirmation.newSale}
+        </Button>
+      </div>
     </div>
   )
 }

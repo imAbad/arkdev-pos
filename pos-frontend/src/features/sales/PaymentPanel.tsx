@@ -4,16 +4,13 @@ import { Label } from '@/components/ui/label'
 import { formatCurrency } from '@/lib/format'
 import { t } from '@/i18n'
 import { cn } from '@/lib/utils'
+import { paymentMethodLabel } from '@/features/sales/payment-labels'
 import type { PaymentMethod } from '@/types/api'
 
 // Fiado (CREDIT) queda fuera de esta pantalla a propósito: requiere elegir
 // un cliente (customers.Client), fuera del alcance de esta sesión — ver
 // arquitectura_tecnica_pos.md.
-const METHODS: { value: PaymentMethod; label: string }[] = [
-  { value: 'CASH', label: t.sale.methodCash },
-  { value: 'CARD', label: t.sale.methodCard },
-  { value: 'TRANSFER', label: t.sale.methodTransfer },
-]
+const METHODS: PaymentMethod[] = ['CASH', 'CARD', 'TRANSFER']
 
 interface PaymentPanelProps {
   total: number
@@ -46,19 +43,19 @@ export function PaymentPanel({
       <div>
         <p className="text-lg font-medium text-ink mb-2">{t.sale.paymentMethod}</p>
         <div className="grid grid-cols-3 gap-3">
-          {METHODS.map((option) => (
+          {METHODS.map((value) => (
             <button
-              key={option.value}
+              key={value}
               type="button"
-              onClick={() => onChangeMethod(option.value)}
+              onClick={() => onChangeMethod(value)}
               className={cn(
                 'h-16 rounded-2xl border-2 text-lg font-semibold transition-colors',
-                method === option.value
+                method === value
                   ? 'border-accent bg-accent text-white'
                   : 'border-border bg-white text-ink hover:bg-surface-muted',
               )}
             >
-              {option.label}
+              {paymentMethodLabel(value)}
             </button>
           ))}
         </div>

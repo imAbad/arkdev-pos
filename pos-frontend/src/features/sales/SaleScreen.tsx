@@ -6,10 +6,12 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { apiErrorMessage } from '@/lib/api-client'
 import { createSale } from '@/services/api/salesApi'
 import { t } from '@/i18n'
+import { useAuth } from '@/features/auth/AuthProvider'
 import { ProductSearch } from '@/features/sales/ProductSearch'
 import { CartView } from '@/features/sales/CartView'
 import { PaymentPanel } from '@/features/sales/PaymentPanel'
 import { SaleConfirmation } from '@/features/sales/SaleConfirmation'
+import { Ticket } from '@/features/sales/Ticket'
 import { cartTotal, type CartLine } from '@/features/sales/cart'
 import type { CashShift, PaymentMethod, Product, Sale } from '@/types/api'
 
@@ -18,6 +20,7 @@ interface SaleScreenProps {
 }
 
 export function SaleScreen({ shift }: SaleScreenProps) {
+  const { companySettings } = useAuth()
   const [cart, setCart] = useState<CartLine[]>([])
   const [method, setMethod] = useState<PaymentMethod>('CASH')
   const [cashReceived, setCashReceived] = useState('0')
@@ -25,6 +28,7 @@ export function SaleScreen({ shift }: SaleScreenProps) {
   const [error, setError] = useState<string | null>(null)
   const [confirmingCancel, setConfirmingCancel] = useState(false)
   const [completed, setCompleted] = useState<{ sale: Sale; changeGiven: number } | null>(null)
+  const [viewingTicket, setViewingTicket] = useState(false)
 
   function addToCart(product: Product) {
     setCart((current) => {
@@ -52,6 +56,7 @@ export function SaleScreen({ shift }: SaleScreenProps) {
     setCashReceived('0')
     setError(null)
     setCompleted(null)
+    setViewingTicket(false)
   }
 
   function handleCancelSale() {
@@ -86,8 +91,27 @@ export function SaleScreen({ shift }: SaleScreenProps) {
     }
   }
 
+  if (completed && viewingTicket) {
+    const businessName = companySettings?.business_name?.trim() || t.common.appName
+    return (
+      <Ticket
+        sale={completed.sale}
+        businessName={businessName}
+        changeGiven={completed.changeGiven}
+        onBack={() => setViewingTicket(false)}
+      />
+    )
+  }
+
   if (completed) {
-    return <SaleConfirmation sale={completed.sale} changeGiven={completed.changeGiven} onNewSale={resetForNewSale} />
+    return (
+      <SaleConfirmation
+        sale={completed.sale}
+        changeGiven={completed.changeGiven}
+        onNewSale={resetForNewSale}
+        onViewTicket={() => setViewingTicket(true)}
+      />
+    )
   }
 
   const total = cartTotal(cart)
