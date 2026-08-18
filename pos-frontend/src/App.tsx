@@ -6,6 +6,7 @@ import { SaleScreen } from '@/features/sales/SaleScreen'
 import { ReportsScreen } from '@/features/reports/ReportsScreen'
 import { ModuleSettingsScreen } from '@/features/admin/ModuleSettingsScreen'
 import { RelatedProductsScreen } from '@/features/catalog/RelatedProductsScreen'
+import { LowStockScreen } from '@/features/catalog/LowStockScreen'
 import { getCurrentShift } from '@/services/api/salesApi'
 import { t } from '@/i18n'
 import type { CashShift } from '@/types/api'
@@ -18,7 +19,7 @@ import type { CashShift } from '@/types/api'
 // tienda — puntos 3/8/9/12) siguen el mismo patrón por ahora. El punto 13
 // de esta sesión reemplaza esto por un router real con sidebar — no antes,
 // para no reescribir esto cinco veces mientras las pantallas se construyen.
-export type ViewKey = 'main' | 'reports' | 'modules' | 'catalog'
+export type ViewKey = 'main' | 'reports' | 'modules' | 'catalog' | 'low-stock'
 
 export interface NavigationContextValue {
   view: ViewKey
@@ -28,6 +29,8 @@ export interface NavigationContextValue {
   closeModules: () => void
   openCatalog: () => void
   closeCatalog: () => void
+  openLowStock: () => void
+  closeLowStock: () => void
 }
 
 // Sin valor por default null-y-throw (a diferencia de useAuth): AppHeader
@@ -45,6 +48,8 @@ export const NavigationContext = createContext<NavigationContextValue>({
   closeModules: () => {},
   openCatalog: () => {},
   closeCatalog: () => {},
+  openLowStock: () => {},
+  closeLowStock: () => {},
 })
 
 export function useNavigation(): NavigationContextValue {
@@ -70,6 +75,8 @@ function AppScreens() {
     closeModules: () => setView('main'),
     openCatalog: () => setView('catalog'),
     closeCatalog: () => setView('main'),
+    openLowStock: () => setView('low-stock'),
+    closeLowStock: () => setView('main'),
   }
 
   return <NavigationContext.Provider value={navigationValue}>{renderScreen()}</NavigationContext.Provider>
@@ -93,6 +100,10 @@ function AppScreens() {
 
     if (view === 'catalog') {
       return <RelatedProductsScreen />
+    }
+
+    if (view === 'low-stock') {
+      return <LowStockScreen />
     }
 
     if (shift === 'loading') {

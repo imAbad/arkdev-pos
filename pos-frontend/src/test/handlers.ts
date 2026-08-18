@@ -34,4 +34,10 @@ export const handlers = [
   ),
 
   http.get(`${BASE}/cash-registers/`, () => HttpResponse.json(paginated([makeCashRegister()]))),
+
+  // Punto 7: AppHeader se monta en casi toda pantalla y siempre pide esto
+  // — default vacío para no obligar a cada test no relacionado con stock
+  // bajo a mockearlo explícitamente (mismo criterio que el resto de esta
+  // lista).
+  http.get(`${BASE}/low-stock/`, () => HttpResponse.json([])),
 ]

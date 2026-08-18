@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
+import { http, HttpResponse } from 'msw'
 import { AuthContext } from '@/features/auth/AuthProvider'
 import { NavigationContext } from '@/App'
 import { fakeAuthValue, fakeNavigationValue } from '@/test/test-utils'
 import { makeProfile } from '@/test/fixtures'
+import { server } from '@/test/server'
 import { t } from '@/i18n'
 import { AppHeader } from './app-header'
+
+const BASE = import.meta.env.VITE_API_BASE_URL
+const LOW_STOCK_URL = `${BASE}/low-stock/`
 
 function renderHeader(profile: ReturnType<typeof makeProfile>) {
   const auth = fakeAuthValue({ profile })
@@ -44,5 +49,32 @@ describe('AppHeader — link de Relacionados (punto 5, exclusivo de ADMINISTRADO
   it('NO lo muestra a un Supervisor (CAJERO con can_authorize_exceptions)', () => {
     renderHeader(makeProfile({ role: 'CAJERO', capabilities: { can_authorize_exceptions: true } }))
     expect(screen.queryByRole('button', { name: t.relatedProducts.navLink })).not.toBeInTheDocument()
+  })
+})
+
+describe('AppHeader — badge de stock bajo (punto 7: visible a cualquier usuario, no solo admin/supervisor)', () => {
+  it('lo muestra a un CAJERO plano cuando hay productos con stock bajo', async () => {
+    server.use(
+      http.get(LOW_STOCK_URL, () =>
+        HttpResponse.json([{ product_id: 1, product_name: 'Yogurt', sku: 'YOG-1', current_stock: 1, min_stock: 5 }]),
+      ),
+    )
+    renderHeader(makeProfile({ role: 'CAJERO', capabilities: {} }))
+
+    expect(await screen.findByRole('button', { name: `${t.lowStock.badgeLabel} (1)` })).toBeInTheDocument()
+  })
+
+  it('NO lo muestra cuando no hay productos con stock bajo', async () => {
+    let requestResolved = false
+    server.use(
+      http.get(LOW_STOCK_URL, () => {
+        requestResolved = true
+        return HttpResponse.json([])
+      }),
+    )
+    renderHeader(makeProfile({ role: 'CAJERO', capabilities: {} }))
+
+    await waitFor(() => expect(requestResolved).toBe(true))
+    expect(screen.queryByRole('button', { name: /Stock bajo/ })).not.toBeInTheDocument()
   })
 })

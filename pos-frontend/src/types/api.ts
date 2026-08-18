@@ -102,6 +102,14 @@ export interface Product {
   company: number
 }
 
+export interface LowStockRow {
+  product_id: number
+  product_name: string
+  sku: string
+  current_stock: number
+  min_stock: number
+}
+
 export type PaymentMethod = 'CASH' | 'CARD' | 'TRANSFER' | 'CREDIT'
 
 export interface SaleDetail {

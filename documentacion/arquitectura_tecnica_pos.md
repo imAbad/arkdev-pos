@@ -85,6 +85,27 @@ Se descubrieron leyendo los serializers/endpoints reales (como pedía la tarea) 
 - `?search=` en `GET /api/v1/products/` (`rest_framework.filters.SearchFilter` sobre `name`/`sku`/`barcode`) — sin esto no había forma de buscar producto, solo listar todo paginado.
 - **CORS** (`django-cors-headers`, `CORS_ALLOWED_ORIGINS` en settings, default cubre los puertos de `vite dev`/`vite preview`) — sin esto el navegador bloquea toda llamada del frontend (puerto distinto) a la API.
 
+### 3.3 Tareas programadas — mecanismo elegido: cron del sistema operativo (punto 7, resumen diario de stock bajo)
+
+El backend necesita un correo diario automático (`catalog.send_low_stock_digest`, un management command) que no dispara ningún request HTTP — nadie hace clic para que corra. Se evaluaron tres mecanismos y se decidió **cron del sistema operativo** (crontab en Linux), no Celery Beat ni `django-crontab`:
+
+- **Celery Beat: descartado.** Requiere Celery + un broker (Redis normalmente) corriendo como servicios adicionales. Ninguno de los dos existe en el proyecto hoy (confirmado en `requirements.txt`) — introducirlos solo para un correo diario sería la pieza de infraestructura más pesada del proyecto para el trabajo más liviano. Si en el futuro aparece una necesidad real de tareas asíncronas (ej. generación de PDFs pesada, webhooks con reintentos), se reevalúa entonces — no antes.
+- **`django-crontab`: descartado.** Es una dependencia Python nueva (aunque chica) para resolver algo que el cron del sistema operativo ya resuelve gratis en cualquier servidor Linux, incluyendo los servicios de Azure ya decididos en `brief_infraestructura_carlos.md` (App Service Linux vía WebJobs con trigger CRON, o Azure Container Apps Jobs si se migra ahí más adelante). Agregar una librería para envolver algo que el sistema operativo ya hace es la definición de una pieza de infraestructura innecesaria.
+- **Cron del sistema operativo: elegido.** Cero dependencias Python nuevas, cero servicios nuevos — coincide con la instrucción explícita de priorizar lo que menos piezas nuevas de infraestructura agregue.
+
+**Comando:** `python manage.py send_low_stock_digest` (`catalog/management/commands/send_low_stock_digest.py`). Recorre cada tenant activo, calcula su stock bajo (`catalog.services.low_stock_products`) y manda un correo a cada `UserProfile` con `role=ADMINISTRADOR` de ese tenant — solo si hay algo que reportar (un tenant sin stock bajo ese día no recibe correo, a propósito: un correo vacío todos los días se aprende a ignorar).
+
+**Qué necesita Carlos en producción:**
+- Una entrada de crontab en el servidor (o el WebJob equivalente en Azure App Service) que ejecute el comando una vez al día, por ejemplo a las 8:00 AM hora local:
+  ```
+  0 8 * * * cd /ruta/al/backend && /ruta/al/venv/bin/python manage.py send_low_stock_digest >> /var/log/pos/low_stock_digest.log 2>&1
+  ```
+- En Azure App Service (Linux) específicamente: un **WebJob** con trigger CRON apuntando al mismo comando, o (si se migra a Azure Container Apps) un **Container Apps Job** con schedule — ambas opciones evitan tener que administrar un cron manual dentro del contenedor del App Service. Documentado también como bullet operativo en `brief_infraestructura_carlos.md`.
+- El mismo SMTP ya configurado para el punto 6 (ticket por correo) — este comando reutiliza las mismas variables de entorno (`EMAIL_HOST`/`EMAIL_HOST_USER`/etc.), no necesita credenciales adicionales.
+- En dev/Docker Compose no hay cron corriendo dentro del contenedor — el comando se ejecuta a mano cuando se necesita probar: `docker compose exec backend python manage.py send_low_stock_digest`.
+
+**Limitación real del cálculo de stock bajo, documentada a propósito:** `low_stock_products` solo puede evaluar productos con `requires_batch=True` — son los únicos con una cantidad de stock real medida (`Batch.current_quantity`) en el modelo actual. Un producto con `requires_batch=False` no tiene ningún mecanismo de conteo de existencias hoy, así que no se le puede calcular "stock bajo" contra nada — mismo límite ya documentado para `expired_stock_report`/`near_expiry_stock_report` (§4.3, puntos 1 y 4 de esta sesión). No es un bug: es el estado real del modelo de datos hasta que se decida rastrear stock también para productos sin lote.
+
 ---
 
 ## 4. Modelo de datos

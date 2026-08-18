@@ -1,6 +1,7 @@
+from django.db.models import Sum
 from django.utils import timezone
 
-from catalog.models import Batch
+from catalog.models import Batch, Product
 
 
 class InsufficientStockError(Exception):
@@ -54,3 +55,45 @@ def decrement_stock_fefo(*, product, branch, quantity):
     raise InsufficientStockError(
         f'Ningún lote vigente de {product.name} tiene suficiente stock para cubrir {quantity}.'
     )
+
+
+def low_stock_products(*, company):
+    """Punto 7: reorder point simplificado — compara stock real contra
+    Product.min_stock directo. La fórmula completa (venta promedio diaria
+    x lead time + stock de seguridad) queda para más adelante, cuando haya
+    historial de ventas suficiente para calcularla; usar min_stock tal
+    cual es decisión ya tomada para esta ronda, no se reabre aquí.
+
+    Limitación real y deliberada, no silenciosa: solo aplica a productos
+    con requires_batch=True. Son los únicos con una cantidad de stock
+    real rastreada (Batch.current_quantity) — el resto del catálogo no
+    tiene ningún mecanismo de conteo de existencias en el modelo actual
+    (mismo hallazgo que ya limita expired_stock_report/near_expiry, punto
+    1 y 4 de esta sesión). No se puede calcular "stock bajo" contra un
+    número que el sistema no mide todavía.
+
+    Solo cuenta stock vigente (no vencido) hacia el total: un lote
+    caducado no es stock vendible, así que ignorarlo evita que un
+    producto con mucho stock caduco parezca bien abastecido cuando en
+    realidad necesita reposición — mismo criterio de "disponible" que ya
+    usa decrement_stock_fefo.
+    """
+    today = timezone.localdate()
+    products = Product.objects.filter(company=company, requires_batch=True).order_by('name')
+
+    rows = []
+    for product in products:
+        current_stock = (
+            Batch.objects.filter(product=product, expiration_date__gte=today)
+            .aggregate(total=Sum('current_quantity'))['total']
+            or 0
+        )
+        if current_stock <= product.min_stock:
+            rows.append({
+                'product_id': product.id,
+                'product_name': product.name,
+                'sku': product.sku,
+                'current_stock': current_stock,
+                'min_stock': product.min_stock,
+            })
+    return rows

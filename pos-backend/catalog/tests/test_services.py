@@ -6,7 +6,7 @@ from django.db import connection, transaction
 from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 
-from catalog.services import InsufficientStockError, decrement_batch_stock, decrement_stock_fefo
+from catalog.services import InsufficientStockError, decrement_batch_stock, decrement_stock_fefo, low_stock_products
 from catalog.tests.factories import create_batch, create_product
 from tenants.tests.factories import create_branch, create_company
 
@@ -123,3 +123,82 @@ class DecrementBatchStockConcurrencyTests(TransactionTestCase):
         self.assertEqual(sorted(results), ['REJECTED', 'SOLD'])
         batch.refresh_from_db()
         self.assertEqual(batch.current_quantity, 0)
+
+
+class LowStockProductsTests(TestCase):
+    """Punto 7: reorder point simplificado sobre Product.min_stock.
+    Limitación real ya documentada en el docstring del servicio: solo
+    aplica a requires_batch=True, único caso con stock real medido — un
+    producto requires_batch=False nunca puede aparecer aquí, sin importar
+    su min_stock, porque el sistema no cuenta su stock hoy."""
+
+    def setUp(self):
+        self.company = create_company('Abarrotes Don Chuy')
+        self.branch = create_branch(self.company)
+        self.today = timezone.localdate()
+
+    def test_product_below_min_stock_is_included(self):
+        product = create_product(self.company, name='Yogurt', sku='YOG-1', requires_batch=True, min_stock=10)
+        create_batch(product, self.branch, initial_quantity=5)
+
+        rows = low_stock_products(company=self.company)
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['product_id'], product.id)
+        self.assertEqual(rows[0]['current_stock'], 5)
+        self.assertEqual(rows[0]['min_stock'], 10)
+
+    def test_product_exactly_at_threshold_is_included(self):
+        # <= min_stock, no < min_stock: en el umbral exacto ya cuenta
+        # como "hay que reordenar", no solo por debajo.
+        product = create_product(self.company, name='Yogurt', sku='YOG-1', requires_batch=True, min_stock=5)
+        create_batch(product, self.branch, initial_quantity=5)
+
+        rows = low_stock_products(company=self.company)
+        self.assertEqual(len(rows), 1)
+
+    def test_product_with_zero_stock_is_included(self):
+        product = create_product(self.company, name='Yogurt', sku='YOG-1', requires_batch=True, min_stock=3)
+        create_batch(product, self.branch, initial_quantity=0)
+
+        rows = low_stock_products(company=self.company)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['current_stock'], 0)
+
+    def test_product_above_min_stock_is_excluded(self):
+        product = create_product(self.company, name='Yogurt', sku='YOG-1', requires_batch=True, min_stock=5)
+        create_batch(product, self.branch, initial_quantity=20)
+
+        self.assertEqual(low_stock_products(company=self.company), [])
+
+    def test_product_not_requiring_batch_is_never_included(self):
+        # No tiene ningún stock rastreado (ver docstring de
+        # low_stock_products) — aunque min_stock sea alto, no puede
+        # aparecer: el sistema no mide nada que comparar.
+        create_product(self.company, name='Servicio genérico', sku='SRV-1', requires_batch=False, min_stock=100)
+
+        self.assertEqual(low_stock_products(company=self.company), [])
+
+    def test_expired_batches_do_not_count_toward_current_stock(self):
+        # Mismo criterio que decrement_stock_fefo: un lote vencido no es
+        # stock vendible, así que no debe hacer que un producto parezca
+        # bien abastecido.
+        product = create_product(self.company, name='Yogurt', sku='YOG-1', requires_batch=True, min_stock=5)
+        create_batch(product, self.branch, batch_number='CADUCADO', initial_quantity=50, expiration_date=self.today - timedelta(days=1))
+
+        rows = low_stock_products(company=self.company)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['current_stock'], 0)
+
+    def test_tenant_isolation(self):
+        other_company = create_company('Papelería La Estrella')
+        other_branch = create_branch(other_company)
+        other_product = create_product(other_company, name='Resistol', sku='RES-1', requires_batch=True, min_stock=10)
+        create_batch(other_product, other_branch, initial_quantity=1)
+
+        product = create_product(self.company, name='Yogurt', sku='YOG-1', requires_batch=True, min_stock=10)
+        create_batch(product, self.branch, initial_quantity=1)
+
+        rows = low_stock_products(company=self.company)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['product_id'], product.id)

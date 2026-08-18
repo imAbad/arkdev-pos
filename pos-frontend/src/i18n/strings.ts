@@ -205,6 +205,19 @@ export const es = {
     remove: 'Quitar',
     errorGeneric: 'No se pudo guardar el cambio. Intenta de nuevo.',
   },
+  lowStock: {
+    badgeLabel: 'Stock bajo',
+    title: 'Stock bajo',
+    subtitle: 'Productos en o por debajo de su stock mínimo configurado.',
+    back: 'Volver a vender',
+    loading: 'Cargando…',
+    errorGeneric: 'No se pudo cargar el stock bajo. Intenta de nuevo.',
+    empty: 'No hay productos con stock bajo en este momento.',
+    colProduct: 'Producto',
+    colSku: 'SKU',
+    colCurrentStock: 'Stock actual',
+    colMinStock: 'Stock mínimo',
+  },
 } as const
 
 export type Strings = typeof es

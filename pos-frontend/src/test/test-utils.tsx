@@ -27,6 +27,8 @@ export function fakeNavigationValue(overrides: Partial<NavigationContextValue> =
     closeModules: () => {},
     openCatalog: () => {},
     closeCatalog: () => {},
+    openLowStock: () => {},
+    closeLowStock: () => {},
     ...overrides,
   }
 }

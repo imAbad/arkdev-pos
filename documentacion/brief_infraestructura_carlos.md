@@ -35,7 +35,9 @@ Vamos a lanzar un POS SaaS multi-tenant (abarrotera/papelería como primer clien
 | **Azure Cost Management + Budgets** | Alertas de presupuesto — ver sección 6, esto es importante para no llevarnos sorpresas |
 | **Correo transaccional** (Azure Communication Services Email, SendGrid, o cualquier SMTP) | Ticket de venta por correo y resumen diario de stock bajo — ver nota abajo |
 
-**Correo transaccional — sin proveedor decidido todavía.** El backend ya manda correos reales (ticket de venta a pedido del cajero, resumen diario de stock bajo — ver sección 7 para el mecanismo de ese segundo). En dev, sin credenciales configuradas, cae al backend de consola de Django (el correo se ve en los logs, no se envía de verdad) — funciona sin nada que configurar. En producción SÍ necesita variables de entorno reales: `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS`, `DEFAULT_FROM_EMAIL` (ver `pos-backend/.env.example`) — estas SÍ deben vivir en Key Vault, no en variables planas del App Service, mismo criterio que el resto de credenciales. Cualquier proveedor SMTP real sirve; no hay decisión tomada sobre cuál todavía, es una de las cosas que necesito que confirmes (ver sección 8).
+**Correo transaccional — sin proveedor decidido todavía.** El backend ya manda correos reales (ticket de venta a pedido del cajero, resumen diario de stock bajo — ver más abajo para el mecanismo de ese segundo). En dev, sin credenciales configuradas, cae al backend de consola de Django (el correo se ve en los logs, no se envía de verdad) — funciona sin nada que configurar. En producción SÍ necesita variables de entorno reales: `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS`, `DEFAULT_FROM_EMAIL` (ver `pos-backend/.env.example`) — estas SÍ deben vivir en Key Vault, no en variables planas del App Service, mismo criterio que el resto de credenciales. Cualquier proveedor SMTP real sirve; no hay decisión tomada sobre cuál todavía, es una de las cosas que necesito que confirmes (ver sección 8).
+
+**Resumen diario de stock bajo — necesita un cron, no un servicio nuevo.** El comando `python manage.py send_low_stock_digest` calcula qué productos están en o por debajo de su stock mínimo por tenant y le manda un correo al/los administrador(es) de cada uno (nada si ese tenant no tiene nada bajo ese día). Se decidió correrlo con **cron del sistema operativo** en vez de Celery Beat o `django-crontab` — ninguno de los dos existe todavía en el proyecto y agregarlos solo para esto sería la pieza de infraestructura más pesada para el trabajo más liviano (detalle completo de la decisión en `documentacion/arquitectura_tecnica_pos.md` §3.3). Lo que esto implica para el App Service: un **WebJob con trigger CRON** (recomendado — nativo de App Service Linux, no requiere nada adicional) ejecutando `python manage.py send_low_stock_digest` una vez al día; el horario sugerido es 8:00 AM hora local. Usa el mismo SMTP del punto anterior, sin credenciales adicionales que configurar.
 
 ---
 
@@ -87,6 +89,7 @@ Configura una alerta en **Azure Cost Management + Budgets** en cuanto montes la 
 - [ ] Configurar Application Insights conectado al App Service
 - [ ] Configurar alerta de presupuesto (sección 6)
 - [ ] Configurar dominio/SSL (definir si es subdominio propio por cliente o un solo dominio con selector de tenant — pendiente de decisión de producto, avísame cuando lo tengamos)
+- [ ] Configurar el WebJob con trigger CRON para `python manage.py send_low_stock_digest` (una vez al día, sugerido 8:00 AM hora local — ver sección 3)
 - [ ] Probar restauración de un backup al menos una vez antes de dar de alta al cliente real
 
 ---

@@ -1,18 +1,33 @@
+import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/features/auth/AuthProvider'
 import { useNavigation } from '@/App'
 import { isAdministrator, isAdministratorOrSupervisor } from '@/lib/permissions'
+import { getLowStockProducts } from '@/services/api/catalogApi'
 import { t } from '@/i18n'
 
 /** Barra de marca — azul (accent_color del tenant), solo para
  * identidad/navegación, nunca para botones de acción (ver index.css). */
 export function AppHeader() {
   const { companySettings, branch, profile, logout } = useAuth()
-  const { view, openReports, openModules, openCatalog } = useNavigation()
+  const { view, openReports, openModules, openCatalog, openLowStock } = useNavigation()
   const businessName = companySettings?.business_name?.trim() || t.common.appName
   const showReportsLink = view === 'main' && isAdministratorOrSupervisor(profile)
   const showModulesLink = view === 'main' && isAdministrator(profile)
   const showCatalogLink = view === 'main' && isAdministrator(profile)
+
+  // Punto 7: cualquier usuario que abre turno debe ver esto, no solo
+  // admin/supervisor — mismo gate que el endpoint (HandlesCash). AppHeader
+  // se monta en cada pantalla (no vive en el árbol una sola vez), así que
+  // esto se recalcula al navegar — aceptable, es una query barata y ya es
+  // el mismo patrón que el resto del header (sin caché propia todavía).
+  const [lowStockCount, setLowStockCount] = useState(0)
+  useEffect(() => {
+    if (profile === null) return
+    getLowStockProducts()
+      .then((rows) => setLowStockCount(rows.length))
+      .catch(() => {})
+  }, [profile])
 
   return (
     <header className="flex items-center justify-between gap-4 bg-accent px-6 py-4 text-white">
@@ -40,6 +55,15 @@ export function AppHeader() {
           <Button variant="neutral" size="compact" onClick={openCatalog}>
             {t.relatedProducts.navLink}
           </Button>
+        )}
+        {lowStockCount > 0 && view !== 'low-stock' && (
+          <button
+            type="button"
+            onClick={openLowStock}
+            className="rounded-full border border-warning bg-warning-bg px-3 py-1 text-sm font-semibold text-warning"
+          >
+            {t.lowStock.badgeLabel} ({lowStockCount})
+          </button>
         )}
         <Button variant="neutral" size="compact" onClick={logout}>
           {t.common.logout}

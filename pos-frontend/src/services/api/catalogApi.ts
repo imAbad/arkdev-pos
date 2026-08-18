@@ -1,5 +1,5 @@
 import { apiClient } from '@/lib/api-client'
-import type { Paginated, Product } from '@/types/api'
+import type { LowStockRow, Paginated, Product } from '@/types/api'
 
 export async function searchProducts(query: string): Promise<Product[]> {
   if (!query.trim()) return []
@@ -16,5 +16,10 @@ export async function getProduct(id: number): Promise<Product> {
 
 export async function updateProductRelatedProducts(id: number, relatedProductIds: number[]): Promise<Product> {
   const response = await apiClient.patch<Product>(`/products/${id}/`, { related_products: relatedProductIds })
+  return response.data
+}
+
+export async function getLowStockProducts(): Promise<LowStockRow[]> {
+  const response = await apiClient.get<LowStockRow[]>('/low-stock/')
   return response.data
 }
