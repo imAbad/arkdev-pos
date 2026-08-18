@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from core.mixins import TenantScopedViewSetMixin
+from core.permissions import IsAdministratorOrReadOnly
 from tenants.models import Branch, CompanySettings, UserProfile
 from tenants.serializers import (
     BranchSerializer,
@@ -24,6 +25,7 @@ class BranchViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
 class CompanySettingsViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
     queryset = CompanySettings.objects.all()
     serializer_class = CompanySettingsSerializer
+    permission_classes = [IsAuthenticated, IsAdministratorOrReadOnly]
 
 
 class UserProfileViewSet(TenantScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):

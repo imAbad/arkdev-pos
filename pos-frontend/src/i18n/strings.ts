@@ -165,6 +165,19 @@ export const es = {
     expiredStockNote: 'Lotes ya caducados que todavía tienen existencia sin vender — represéntalo como pérdida y decide si se dan de baja.',
     total: 'Total',
   },
+  modules: {
+    navLink: 'Módulos',
+    title: 'Módulos',
+    subtitle: 'Enciende o apaga funciones adicionales para tu negocio. Los cambios aplican de inmediato.',
+    back: 'Volver a vender',
+    loading: 'Cargando…',
+    errorGeneric: 'No se pudieron guardar los cambios. Intenta de nuevo.',
+    saved: 'Cambios guardados.',
+    cfdiName: 'Facturación fiscal (CFDI)',
+    cfdiDescription: 'Permite generar facturas electrónicas válidas ante el SAT. Todavía no disponible en este plan — el interruptor queda listo para cuando se active como complemento.',
+    multipleBranchesName: 'Múltiples sucursales',
+    multipleBranchesDescription: 'Permite operar más de una sucursal bajo la misma cuenta, cada una con su propia caja e inventario.',
+  },
 } as const
 
 export type Strings = typeof es

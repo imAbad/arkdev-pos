@@ -20,7 +20,7 @@ function renderReportsScreen(closeReports = vi.fn()) {
   const auth = fakeAuthValue({ profile: makeProfile({ role: 'ADMINISTRADOR' }) })
   return render(
     <AuthContext.Provider value={auth}>
-      <NavigationContext.Provider value={{ view: 'reports', openReports: vi.fn(), closeReports }}>
+      <NavigationContext.Provider value={{ view: 'reports', openReports: vi.fn(), closeReports, openModules: vi.fn(), closeModules: vi.fn() }}>
         <ReportsScreen />
       </NavigationContext.Provider>
     </AuthContext.Provider>,

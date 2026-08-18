@@ -9,8 +9,8 @@ from django.test import TestCase, override_settings
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from tenants.models import CompanySettings
-from tenants.tests.factories import create_full_tenant
+from tenants.models import CompanySettings, UserProfile
+from tenants.tests.factories import create_full_tenant, create_user_with_profile
 
 _PNG_BYTES = (
     b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01'
@@ -65,8 +65,12 @@ class CompanySettingsBrandingModelTests(TestCase):
 
 class CompanySettingsBrandingApiTests(APITestCase):
     def setUp(self):
-        self.tenant_a = create_full_tenant('Abarrotes Don Chuy', 'Centro', 'admin@donchuy.test')
-        self.tenant_b = create_full_tenant('Papelería La Estrella', 'Norte', 'admin@estrella.test')
+        self.tenant_a = create_full_tenant(
+            'Abarrotes Don Chuy', 'Centro', 'admin@donchuy.test', role=UserProfile.Role.ADMINISTRADOR,
+        )
+        self.tenant_b = create_full_tenant(
+            'Papelería La Estrella', 'Norte', 'admin@estrella.test', role=UserProfile.Role.ADMINISTRADOR,
+        )
 
     def _auth(self, user):
         self.client.force_authenticate(user=user)
@@ -116,3 +120,45 @@ class CompanySettingsBrandingApiTests(APITestCase):
     def test_unauthenticated_request_is_rejected(self):
         response = self.client.get('/api/v1/company-settings/')
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_plain_cajero_can_read_branding_but_not_write_it(self):
+        # Punto 3/12: branding y feature flags son configuración de
+        # negocio, exclusiva de ADMINISTRADOR — un CAJERO puede seguir
+        # leyendo (AppHeader lo necesita para pintar la marca sin
+        # importar el rol de quien esté logueado) pero no editarlo. Bug
+        # real encontrado al revisar el viewset: no tenía NINGÚN
+        # permission_classes propio antes de este punto, heredaba el
+        # default de DRF (IsAuthenticated a secas) — cualquier cajero
+        # podía hacer PATCH aquí.
+        cajero, _ = create_user_with_profile(
+            'cajero@donchuy.test', self.tenant_a['branch'], capabilities={'handles_cash': True},
+        )
+        self._auth(cajero)
+
+        get_response = self.client.get(f"/api/v1/company-settings/{self.tenant_a['settings'].id}/")
+        self.assertEqual(get_response.status_code, status.HTTP_200_OK)
+
+        patch_response = self.client.patch(
+            f"/api/v1/company-settings/{self.tenant_a['settings'].id}/",
+            {'business_name': 'Nombre no autorizado'},
+            format='json',
+        )
+        self.assertEqual(patch_response.status_code, status.HTTP_403_FORBIDDEN)
+        self.tenant_a['settings'].refresh_from_db()
+        self.assertNotEqual(self.tenant_a['settings'].business_name, 'Nombre no autorizado')
+
+    def test_administrador_can_toggle_enabled_modules(self):
+        self._auth(self.tenant_a['user'])
+        response = self.client.patch(
+            f"/api/v1/company-settings/{self.tenant_a['settings'].id}/",
+            {'enabled_modules': {'cfdi': True, 'multiple_branches': False}},
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.tenant_a['settings'].refresh_from_db()
+        self.assertEqual(
+            self.tenant_a['settings'].enabled_modules, {'cfdi': True, 'multiple_branches': False},
+        )
+
+    def test_enabled_modules_defaults_to_empty_dict(self):
+        self.assertEqual(self.tenant_a['settings'].enabled_modules, {})

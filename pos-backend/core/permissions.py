@@ -1,4 +1,4 @@
-from rest_framework.permissions import BasePermission
+from rest_framework.permissions import SAFE_METHODS, BasePermission
 
 
 class HasCapability(BasePermission):
@@ -62,6 +62,25 @@ class IsAdministrator(BasePermission):
     message = 'Esta acción requiere el rol de administrador.'
 
     def has_permission(self, request, view):
+        profile = getattr(request.user, 'profile', None)
+        return profile is not None and profile.role == profile.Role.ADMINISTRADOR
+
+
+class IsAdministratorOrReadOnly(BasePermission):
+    """Cualquier usuario autenticado del tenant puede LEER (branding y
+    feature flags son visibles para todos — AppHeader/AuthProvider los
+    cargan sin importar rol, ver company-settings/). Solo ADMINISTRADOR
+    puede escribir: son configuración de negocio (nombre, logo, color,
+    módulos activos), no operación diaria. Bug real encontrado al
+    revisar CompanySettingsViewSet para el punto 3: no tenía NINGÚN
+    permission_classes propio, heredaba solo IsAuthenticated del default
+    de DRF — cualquier cajero autenticado podía hacer PATCH ahí."""
+
+    message = 'Esta acción requiere el rol de administrador.'
+
+    def has_permission(self, request, view):
+        if request.method in SAFE_METHODS:
+            return True
         profile = getattr(request.user, 'profile', None)
         return profile is not None and profile.role == profile.Role.ADMINISTRADOR
 

@@ -34,6 +34,11 @@ export interface AuthContextValue {
   loggingIn: boolean
   logout: () => void
   sessionExpiredNotice: string | null
+  /** Recarga companySettings del backend — usarlo después de un PATCH
+   * (módulos, branding) para que AppHeader y todo lo demás que lee
+   * companySettings desde este contexto refleje el cambio sin recargar
+   * la página. */
+  refreshCompanySettings: () => Promise<void>
 }
 
 // Exportado para que los tests de pantallas individuales (OpenShiftScreen,
@@ -124,6 +129,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  const refreshCompanySettings = useCallback(async () => {
+    setCompanySettings(await getMyCompanySettings())
+  }, [])
+
   const logout = useCallback(() => {
     clearAccessToken()
     setProfile(null)
@@ -136,8 +145,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AuthContextValue>(
     () => ({
       status, profile, branch, companySettings, login, loginError, loggingIn, logout, sessionExpiredNotice,
+      refreshCompanySettings,
     }),
-    [status, profile, branch, companySettings, login, loginError, loggingIn, logout, sessionExpiredNotice],
+    [
+      status, profile, branch, companySettings, login, loginError, loggingIn, logout, sessionExpiredNotice,
+      refreshCompanySettings,
+    ],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

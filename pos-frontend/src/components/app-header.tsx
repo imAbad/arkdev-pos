@@ -1,16 +1,17 @@
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/features/auth/AuthProvider'
 import { useNavigation } from '@/App'
-import { isAdministratorOrSupervisor } from '@/lib/permissions'
+import { isAdministrator, isAdministratorOrSupervisor } from '@/lib/permissions'
 import { t } from '@/i18n'
 
 /** Barra de marca — azul (accent_color del tenant), solo para
  * identidad/navegación, nunca para botones de acción (ver index.css). */
 export function AppHeader() {
   const { companySettings, branch, profile, logout } = useAuth()
-  const { view, openReports } = useNavigation()
+  const { view, openReports, openModules } = useNavigation()
   const businessName = companySettings?.business_name?.trim() || t.common.appName
   const showReportsLink = view === 'main' && isAdministratorOrSupervisor(profile)
+  const showModulesLink = view === 'main' && isAdministrator(profile)
 
   return (
     <header className="flex items-center justify-between gap-4 bg-accent px-6 py-4 text-white">
@@ -27,6 +28,11 @@ export function AppHeader() {
         {showReportsLink && (
           <Button variant="neutral" size="compact" onClick={openReports}>
             {t.reports.navLink}
+          </Button>
+        )}
+        {showModulesLink && (
+          <Button variant="neutral" size="compact" onClick={openModules}>
+            {t.modules.navLink}
           </Button>
         )}
         <Button variant="neutral" size="compact" onClick={logout}>

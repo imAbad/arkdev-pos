@@ -24,6 +24,7 @@ export function fakeAuthValue(overrides: Partial<AuthContextValue> = {}): AuthCo
     loggingIn: false,
     logout: () => {},
     sessionExpiredNotice: null,
+    refreshCompanySettings: async () => {},
     ...overrides,
   }
 }

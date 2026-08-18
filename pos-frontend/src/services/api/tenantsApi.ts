@@ -22,3 +22,17 @@ export async function getMyCompanySettings(): Promise<CompanySettings | null> {
   const response = await apiClient.get<Paginated<CompanySettings>>('/company-settings/')
   return response.data.results[0] ?? null
 }
+
+/** Solo campos JSON — `logo` es un ImageField, se sube aparte con
+ * FormData (ver updateCompanyLogo). El backend ya soportaba PATCH desde
+ * antes (ModelViewSet completo); solo faltaba la pantalla y, se
+ * encontró al construirla, el permiso: antes cualquier usuario
+ * autenticado del tenant podía escribir aquí, ahora solo ADMINISTRADOR
+ * (ver core.permissions.IsAdministratorOrReadOnly). */
+export async function updateCompanySettings(
+  id: number,
+  patch: Partial<Pick<CompanySettings, 'business_name' | 'accent_color' | 'enabled_modules'>>,
+): Promise<CompanySettings> {
+  const response = await apiClient.patch<CompanySettings>(`/company-settings/${id}/`, patch)
+  return response.data
+}

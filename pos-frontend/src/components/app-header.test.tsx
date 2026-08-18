@@ -11,7 +11,7 @@ function renderHeader(profile: ReturnType<typeof makeProfile>) {
   const auth = fakeAuthValue({ profile })
   return render(
     <AuthContext.Provider value={auth}>
-      <NavigationContext.Provider value={{ view: 'main', openReports: vi.fn(), closeReports: vi.fn() }}>
+      <NavigationContext.Provider value={{ view: 'main', openReports: vi.fn(), closeReports: vi.fn(), openModules: vi.fn(), closeModules: vi.fn() }}>
         <AppHeader />
       </NavigationContext.Provider>
     </AuthContext.Provider>,

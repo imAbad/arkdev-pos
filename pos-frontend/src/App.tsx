@@ -4,20 +4,27 @@ import { LoginScreen } from '@/features/auth/LoginScreen'
 import { OpenShiftScreen } from '@/features/shift/OpenShiftScreen'
 import { SaleScreen } from '@/features/sales/SaleScreen'
 import { ReportsScreen } from '@/features/reports/ReportsScreen'
+import { ModuleSettingsScreen } from '@/features/admin/ModuleSettingsScreen'
 import { getCurrentShift } from '@/services/api/salesApi'
 import { t } from '@/i18n'
 import type { CashShift } from '@/types/api'
 
 // Navegación mínima sin router (a propósito — ver arquitectura_tecnica_pos.md
 // §3: "se agrega un router cuando haya navegación real que lo justifique
-// -catálogo, reportes, admin- no antes"). Reportes es la primera pantalla
-// que necesita ser alcanzable independientemente del flujo turno/venta
-// (un administrador puede querer ver reportes sin abrir turno), así que
-// vive en un estado de vista simple aquí, no dentro de SaleScreen.
+// -catálogo, reportes, admin- no antes"). Reportes fue la primera pantalla
+// alcanzable independientemente del flujo turno/venta; el resto de
+// pantallas de administración (módulos, catálogo, usuarios, config. de
+// tienda — puntos 3/8/9/12) siguen el mismo patrón por ahora. El punto 13
+// de esta sesión reemplaza esto por un router real con sidebar — no antes,
+// para no reescribir esto cinco veces mientras las pantallas se construyen.
+export type ViewKey = 'main' | 'reports' | 'modules'
+
 export interface NavigationContextValue {
-  view: 'main' | 'reports'
+  view: ViewKey
   openReports: () => void
   closeReports: () => void
+  openModules: () => void
+  closeModules: () => void
 }
 
 // Sin valor por default null-y-throw (a diferencia de useAuth): AppHeader
@@ -31,6 +38,8 @@ export const NavigationContext = createContext<NavigationContextValue>({
   view: 'main',
   openReports: () => {},
   closeReports: () => {},
+  openModules: () => {},
+  closeModules: () => {},
 })
 
 export function useNavigation(): NavigationContextValue {
@@ -40,7 +49,7 @@ export function useNavigation(): NavigationContextValue {
 function AppScreens() {
   const { status } = useAuth()
   const [shift, setShift] = useState<CashShift | null | 'loading'>('loading')
-  const [view, setView] = useState<'main' | 'reports'>('main')
+  const [view, setView] = useState<ViewKey>('main')
 
   useEffect(() => {
     if (status !== 'authenticated') return
@@ -52,6 +61,8 @@ function AppScreens() {
     view,
     openReports: () => setView('reports'),
     closeReports: () => setView('main'),
+    openModules: () => setView('modules'),
+    closeModules: () => setView('main'),
   }
 
   return <NavigationContext.Provider value={navigationValue}>{renderScreen()}</NavigationContext.Provider>
@@ -67,6 +78,10 @@ function AppScreens() {
 
     if (view === 'reports') {
       return <ReportsScreen />
+    }
+
+    if (view === 'modules') {
+      return <ModuleSettingsScreen />
     }
 
     if (shift === 'loading') {
