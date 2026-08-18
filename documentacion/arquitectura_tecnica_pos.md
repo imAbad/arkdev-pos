@@ -312,6 +312,22 @@ src/
 
 **Nota de entorno, no de la app**: Node 22+ trae un `localStorage` global experimental que choca con el de jsdom en tests (`window.localStorage` queda sin `.clear()`/`.getItem()` funcionales). Se desactiva con `--no-experimental-webstorage` vía `NODE_OPTIONS` en los scripts `test`/`test:watch` de `package.json` (con `cross-env` para que funcione igual en Windows) — nada que ver con el código de la app, es una incompatibilidad puntual de esta versión de Node con jsdom.
 
+### 8.2 Datos de prueba reproducibles (`manage.py seed_demo_data`)
+
+Antes de esta pieza, los datos de prueba de cada sesión de construcción se creaban a mano (shell de Django, browser) y se perdían — no reproducibles, no compartibles con quien levante el proyecto después (Carlos incluido). `core/management/commands/seed_demo_data.py` lo resuelve.
+
+**Por qué vive en `core`** aunque importa modelos de `tenants`/`sales`/`catalog`/`customers`: es una herramienta de desarrollo invocada solo vía `manage.py`, nada la importa en runtime — no aplica la regla de límites entre apps de la sección 2 (esa regla es sobre que la LÓGICA DE NEGOCIO de las apps no se acople entre sí; un script de seed por definición necesita tocar todo el sistema, no es lógica de negocio de ningún dominio en particular).
+
+**Idempotencia — decisión explícita: limpia y recrea, no `get_or_create`.** Se evaluaron las dos:
+- `get_or_create` por campo obligaría a mantener dos caminos (crear vs. actualizar-si-cambió) para cada modelo, y un cambio futuro al script podría dejar datos viejos a medio actualizar en un entorno que ya lo había corrido con una versión anterior.
+- Limpiar y recrear (elegido) garantiza el mismo resultado exacto sin importar el estado previo — un solo camino de código, sin casos borde de "¿qué pasa si ya existía pero con otro precio?".
+
+El costo (destructivo) es aceptable porque el borrado está **estrictamente acotado**: busca únicamente las 2 companies por su nombre exacto (`Abarrotes La Fortuna`, `Papelería El Estudiante`) y solo toca lo que cuelga de esas dos — nunca borra nada más de la base de datos, confirmado con test manual corriendo el comando con datos reales encima (venta en efectivo, venta a crédito con `CreditMovement` referenciando esa venta, turno abierto) para probar que el orden de limpieza no choca con ningún `on_delete=PROTECT` del modelo de datos, y que un tenant preexistente con nombre distinto (de pruebas manuales previas) queda intacto.
+
+**Qué genera, por tenant**: Company + Branch con nombre/dirección realistas y **distintos entre sí** (no "Tenant A"/"B"), CompanySettings con `business_name`/`accent_color` propios (para que la personalización visual sea visible al cambiar de sesión — ver §4.1), una CashRegister, 3 usuarios (`ADMINISTRADOR`, `CAJERO` con `handles_cash`, y `CAJERO` con `can_authorize_exceptions=True` — el Supervisor del sistema de capabilities, ver §4.1 y decisiones_post_auditoria.md §5), un catálogo de 20+ productos (mezcla de `unit_type`, IVA 0%/16% mixto — alimentos básicos y libros son 0% por ley en México, el resto 16% —, uno con `requires_batch=True` y su `Batch`), y 2-3 `Client` con `CreditAccount` (uno con saldo ya cargado, vía `customers.services.charge_credit`, no escrito directo a la BD). Un tenant además arranca con un `CashShift` ya abierto (`sales.services.open_shift`), para poder entrar directo a la pantalla de venta sin repetir la apertura en cada prueba.
+
+Todas las contraseñas de prueba son `demo1234` (documentada a propósito, no generada al azar — el comando la imprime junto con el correo exacto de cada usuario al terminar, no hay que ir a buscar en la base de datos qué se generó).
+
 ---
 
 ## 9. Orden de construcción sugerido

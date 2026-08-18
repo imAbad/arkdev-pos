@@ -44,6 +44,7 @@ Con los contenedores corriendo, en otra terminal:
 ```bash
 docker compose exec backend python manage.py migrate
 docker compose exec backend python manage.py createsuperuser
+docker compose exec backend python manage.py seed_demo_data   # opcional, ver abajo
 ```
 
 La API queda en `http://localhost:8000/api/v1/`, el admin de Django (solo para uso interno de desarrollo, ver `CLAUDE.md` regla #4) en `http://localhost:8000/admin/`.
@@ -56,8 +57,22 @@ python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env   # ajusta DB_HOST=localhost y credenciales de tu Postgres local
 python manage.py migrate
+python manage.py createsuperuser
+python manage.py seed_demo_data   # opcional, ver abajo
 python manage.py runserver
 ```
+
+### Datos de prueba (`seed_demo_data`, opcional)
+
+```bash
+python manage.py seed_demo_data
+```
+
+Genera **2 tenants completos** (`Abarrotes La Fortuna` y `Papelería El Estudiante`) con catálogo (20+ productos cada uno, IVA 0%/16% mixto, uno con lote/caducidad), 3 usuarios por tenant (`ADMINISTRADOR`, `CAJERO`, y un `CAJERO` con `can_authorize_exceptions=True` — el "supervisor" del sistema de capabilities), clientes con fiado (uno ya con saldo pendiente), y un turno de caja abierto en `Abarrotes La Fortuna` para poder entrar directo a vender. Todas las contraseñas son `demo1234` — el comando imprime el correo exacto de cada usuario al terminar.
+
+Es la forma más rápida de confirmar A MANO (no solo con la suite de tests) que un tenant no ve datos de otro: inicia sesión con un usuario de cada tenant y compara.
+
+**Es seguro correrlo varias veces** — limpia y recrea estos 2 tenants por nombre exacto cada vez (no toca ningún otro dato de la base). No usa `get_or_create` a propósito: con datos de prueba, "siempre el mismo resultado exacto sin importar el estado previo" importa más que preservar ediciones manuales que le hayas hecho a estos 2 tenants — si le hiciste cambios a mano y quieres conservarlos, no lo vuelvas a correr.
 
 ## Levantar el frontend
 
