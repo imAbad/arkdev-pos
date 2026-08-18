@@ -95,3 +95,13 @@ Ya no quedan supuestos importantes abiertos sobre el código existente. Con esto
 - Login por email (no username)
 
 Es el siguiente documento natural antes de escribir la primera línea de código.
+
+---
+
+## 10. Avance de construcción — punto 2 del orden de construcción (17 ago 2026)
+
+Del punto 2 (`documentacion/arquitectura_tecnica_pos.md` §9 — extracción "tal cual" como paquete compartido) se construyeron: `audit` (`AuditLog` + `audit.services.log_action`), el gate de permisos por capability (`core/permissions.py`, `HasCapability`/`capability_required`), y `sales.CashRegister`/`CashShift` con apertura/cierre y arqueo ciego — los tres con tests de aislamiento multi-tenant y de permisos negados, no solo happy path.
+
+**Reportes genéricos quedan explícitamente pospuestos, no olvidados.** La sección 2 de este documento los lista como "ya extraíbles" (consultas parametrizadas por fecha/sucursal, sin campos de farmacia), pero eso asume que ya existen datos reales de qué reportar — producto/valuación de inventario y ventas. Al cierre del punto 2, `catalog.Product` (punto 3) y `sales.Sale`/`Payment` (punto 4) todavía no existen en el repo nuevo. Construir "reportes genéricos" ahora sería reportar sobre modelos que no existen. Se retoma cuando ambos estén construidos y haya datos reales sobre los que agregar — no antes, y no se reinterpreta como parte implícita de ningún punto posterior sin decirlo explícitamente aquí.
+
+**Decisión de diseño no anticipada en la v1 de este documento**, tomada durante la construcción de `sales.CashShift`: el override de "alguien más cierra tu turno" no quedó limitado a `ADMINISTRADOR` (como el equivalente `ADMIN` en pharma_core) — también lo puede hacer un `CAJERO` con `capabilities.can_authorize_exceptions=True` (Supervisor, ver §5 de este documento). Le da un uso real a esa capability antes de que exista el endpoint de PIN (punto 6), y ambos caminos de override quedan auditados en `AuditLog` con `changes.via` indicando cuál se usó.

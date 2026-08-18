@@ -96,9 +96,13 @@ Cada feature es dueña de su propio estado (Context o similar, como ya usan) y s
 
 **Nota de super-admin/soporte:** agregar `SupportAccessLog` (o extender `AuditLog`) para registrar cuándo un `is_staff` accede a datos de un tenant en modo soporte — gap identificado en la auditoría, pendiente de decidir si entra en MVP o fase 2 (ver sección 7).
 
+**Decisión tomada durante construcción (confirma comportamiento mientras `SupportAccessLog` no existe):** `is_staff`/`is_superuser` **no** es un bypass automático del aislamiento a nivel API. Un usuario staff/superuser sin `UserProfile` ve listas vacías en los endpoints tenant-scoped (no 403, no acceso total); con `UserProfile` queda tan limitado como cualquier usuario normal. La única vía con visibilidad cross-tenant real hoy es Django Admin (`Model.objects.all()` sin filtrar, gateado por `is_staff` a nivel framework) — consistente con la regla de `CLAUDE.md` de que el admin de Django es solo para uso interno de desarrollo. Este comportamiento está fijado por tests (`tenants/tests/test_isolation.py::StaffAndSuperuserAccessTests`) y es el estado correcto hasta que se construya `SupportAccessLog`.
+
 ### 4.2 `sales`
 
 **CashRegister** / **CashShift** — *extraídos casi sin cambios, ya genéricos*
+
+**Decisión tomada durante construcción:** el override de "cerrar el turno de otro cajero" (en `pharma_core` estaba fijo a `role == ADMIN`) cambia aquí a `role == ADMINISTRADOR` **o** `capabilities.can_authorize_exceptions == True`. Es consistente con la decisión ya tomada en la sección 5 (Supervisor se modela como capability, no como role) — esto le da un uso real y probado a `can_authorize_exceptions` antes de que exista el endpoint de PIN (orden de construcción, punto 6). Ambos caminos (admin y capability) quedan registrados en `AuditLog`. `expected_closing_balance` en el arqueo hoy solo contempla el fondo de apertura, porque `Sale`/`Payment` no existen todavía (punto 4) — `compute_expected_totals()` es el único punto a extender cuando lleguen.
 
 **Sale**
 | Campo | Tipo | Nota |
@@ -141,7 +145,13 @@ Cada feature es dueña de su propio estado (Context o similar, como ya usan) y s
 | min_stock | int | |
 | **image** | **ImageField, nullable** | **Agregar desde el diseño aunque no se use en MVP** — evita migración de "URL en texto" a archivo real más adelante. Storage backend: Azure Blob vía `django-storages`, prefijo por tenant (`tenant_{id}/products/...`) |
 
-**Category, Supplier, Batch, StockTransfer, InventoryAdjustment** — extraídos tal cual, sin cambios de fondo.
+**Category, Supplier** — extraídos con un ajuste: `company` no-nullable (consistente con la regla del proyecto de que todo dato de tenant tiene su company explícita, sin excepción por conveniencia).
+
+**Batch** — extraído con dos ajustes deliberados sobre `pharma_core`: `branch` ya no nullable, y se agregó `UniqueConstraint(product, batch_number)` a nivel de base de datos — en `pharma_core` esa unicidad era solo una regla de dominio no forzada, aquí se cierra a nivel constraint.
+
+**StockTransfer, InventoryAdjustment** — extraídos tal cual, sin cambios de fondo (pendientes de construir).
+
+**Confirmado sin ambigüedad durante construcción:** `Product.unit_type` es únicamente un campo de choices informativo — no tiene lógica de venta a granel embebida. Esa lógica (cómo se captura/valida una venta por KG/LITRO, integración de báscula si aplica) pertenece 100% a `sales`, no a `catalog`. `requires_batch` es igualmente informativo: no hay constraint de BD que ate `Product` a `Batch` en ningún sentido — lo confirma `RequiresBatchIndependenceTests`, que prueba las 4 combinaciones posibles.
 
 ### 4.4 `customers` *(100% nuevo)*
 
@@ -181,6 +191,8 @@ TenantScopedQuerySet / TenantScopedManager
 ```
 
 Esto reemplaza el patrón de `pharma_core` (filtro manual repetido por ViewSet) que la auditoría marcó como riesgo. Es la primera pieza de infraestructura a construir — todo lo demás depende de que esto exista y esté bien probado (con tests que confirmen que un tenant no puede ver datos de otro, no solo que el happy path funciona).
+
+**Pieza agregada durante construcción, ahora parte del patrón:** `core/serializers.py::TenantScopedFieldsMixin` — acota los querysets de campos FK en serializers (ej. `branch`, `category`, `supplier`) al tenant del request. Nace de un vector de fuga encontrado dos veces por separado (`CashRegisterSerializer.branch`, luego `Product.category`/`.supplier` y `Batch.product`/`.branch`): sin esto, un FK sin acotar en un serializer permite crear/editar un registro apuntando a datos de otro tenant, aunque el queryset de lectura ya esté filtrado por `TenantScopedQuerySet`. **Regla derivada: todo serializer con un campo FK debe usar este mixin, no es opcional ni caso por caso** — el aislamiento a nivel API no está completo solo con el queryset de lectura, también hay que acotar lo que se puede *escribir*.
 
 ---
 
