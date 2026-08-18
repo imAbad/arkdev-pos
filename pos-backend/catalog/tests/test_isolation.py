@@ -110,3 +110,45 @@ class CatalogApiIsolationTests(APITestCase):
     def test_unauthenticated_request_is_rejected(self):
         response = self.client.get('/api/v1/products/')
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class ProductSearchApiTests(APITestCase):
+    def setUp(self):
+        self.tenant_a = create_full_tenant('Abarrotes Don Chuy', 'Centro', 'admin@donchuy.test')
+        self.tenant_b = create_full_tenant('Papelería La Estrella', 'Norte', 'admin@estrella.test')
+        self.category_a = create_category(self.tenant_a['company'])
+        self.leche = create_product(
+            self.tenant_a['company'], category=self.category_a, name='Leche entera 1L', sku='LEC-1L',
+        )
+        self.refresco = create_product(
+            self.tenant_a['company'], category=self.category_a, name='Refresco 600ml', sku='REF-600',
+            barcode='7501234567890',
+        )
+
+    def _auth(self, user):
+        self.client.force_authenticate(user=user)
+
+    def test_search_by_name(self):
+        self._auth(self.tenant_a['user'])
+        response = self.client.get('/api/v1/products/?search=leche')
+        ids = [row['id'] for row in response.data['results']]
+        self.assertEqual(ids, [self.leche.id])
+
+    def test_search_by_sku(self):
+        self._auth(self.tenant_a['user'])
+        response = self.client.get('/api/v1/products/?search=REF-600')
+        ids = [row['id'] for row in response.data['results']]
+        self.assertEqual(ids, [self.refresco.id])
+
+    def test_search_by_barcode(self):
+        self._auth(self.tenant_a['user'])
+        response = self.client.get('/api/v1/products/?search=7501234567890')
+        ids = [row['id'] for row in response.data['results']]
+        self.assertEqual(ids, [self.refresco.id])
+
+    def test_search_never_returns_another_tenants_product(self):
+        create_product(self.tenant_b['company'], name='Leche entera 1L', sku='LEC-1L-B')
+        self._auth(self.tenant_a['user'])
+        response = self.client.get('/api/v1/products/?search=leche')
+        ids = [row['id'] for row in response.data['results']]
+        self.assertEqual(ids, [self.leche.id])

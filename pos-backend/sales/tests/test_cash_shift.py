@@ -386,3 +386,45 @@ class CashRegisterApiTests(APITestCase):
         response = self.client.get('/api/v1/cash-registers/')
         names = [row['name'] for row in response.data['results']]
         self.assertEqual(names, ['A1'])
+
+
+class CurrentShiftEndpointTests(APITestCase):
+    def setUp(self):
+        self.tenant_a = create_full_tenant(
+            'Abarrotes Don Chuy', 'Centro', 'a@donchuy.test', capabilities={'handles_cash': True},
+        )
+        self.tenant_b = create_full_tenant(
+            'Papelería La Estrella', 'Norte', 'b@estrella.test', capabilities={'handles_cash': True},
+        )
+        self.register_a = create_cash_register(self.tenant_a['branch'])
+
+    def _auth(self, user):
+        self.client.force_authenticate(user=user)
+
+    def test_returns_404_when_no_open_shift(self):
+        self._auth(self.tenant_a['user'])
+        response = self.client.get('/api/v1/cash-shifts/current/')
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_returns_own_open_shift(self):
+        shift = open_shift(user=self.tenant_a['user'], cash_register=self.register_a, opening_balance=Decimal('200'))
+        self._auth(self.tenant_a['user'])
+        response = self.client.get('/api/v1/cash-shifts/current/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['id'], shift.id)
+
+    def test_does_not_return_another_cashiers_open_shift(self):
+        other_cajero, _ = create_user_with_profile(
+            'otro@donchuy.test', self.tenant_a['branch'], capabilities={'handles_cash': True},
+        )
+        open_shift(user=other_cajero, cash_register=self.register_a)
+        self._auth(self.tenant_a['user'])
+        response = self.client.get('/api/v1/cash-shifts/current/')
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_does_not_return_closed_shift(self):
+        shift = open_shift(user=self.tenant_a['user'], cash_register=self.register_a)
+        close_shift(shift=shift, closing_user=self.tenant_a['user'], actual_closing_balance=Decimal('0'))
+        self._auth(self.tenant_a['user'])
+        response = self.client.get('/api/v1/cash-shifts/current/')
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)

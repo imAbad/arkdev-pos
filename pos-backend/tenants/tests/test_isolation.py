@@ -185,3 +185,34 @@ class StaffAndSuperuserAccessTests(APITestCase):
         client.force_login(self.tenant_a['user'])
         response = client.get('/admin/')
         self.assertEqual(response.status_code, status.HTTP_302_FOUND)
+
+
+class UserProfileMeEndpointTests(APITestCase):
+    def setUp(self):
+        self.tenant_a = create_full_tenant('Abarrotes Don Chuy', 'Centro', 'a@donchuy.test')
+        self.tenant_b = create_full_tenant('Papelería La Estrella', 'Norte', 'b@estrella.test')
+
+    def _auth(self, user):
+        self.client.force_authenticate(user=user)
+
+    def test_me_returns_own_profile(self):
+        self._auth(self.tenant_a['user'])
+        response = self.client.get('/api/v1/user-profiles/me/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['email'], self.tenant_a['user'].email)
+        self.assertEqual(response.data['company'], self.tenant_a['company'].id)
+
+    def test_me_never_returns_another_tenants_profile(self):
+        self._auth(self.tenant_a['user'])
+        response = self.client.get('/api/v1/user-profiles/me/')
+        self.assertNotEqual(response.data['email'], self.tenant_b['user'].email)
+
+    def test_me_without_profile_returns_404(self):
+        orphan = User.objects.create_user(email='sinprofile@arkdev.test', password='x')
+        self._auth(orphan)
+        response = self.client.get('/api/v1/user-profiles/me/')
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_me_requires_authentication(self):
+        response = self.client.get('/api/v1/user-profiles/me/')
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
