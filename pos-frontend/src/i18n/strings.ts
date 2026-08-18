@@ -1,0 +1,74 @@
+// Todo el texto visible de la app vive aquí — ningún componente escribe un
+// string suelto. Hoy solo hay español; agregar otro idioma después es
+// cuestión de configuración (elegir qué objeto usar), no una reescritura
+// de componentes — evita repetir el problema que la auditoría encontró en
+// pharma_frontend (strings de farmacia repartidos sin i18n en 9 archivos).
+export const es = {
+  common: {
+    appName: 'Punto de Venta',
+    logout: 'Cerrar sesión',
+    loading: 'Cargando…',
+    retry: 'Reintentar',
+    yes: 'Sí',
+    no: 'No',
+  },
+  login: {
+    title: 'Iniciar sesión',
+    subtitle: 'Ingresa con tu correo y contraseña.',
+    email: 'Correo electrónico',
+    emailPlaceholder: 'tu-correo@tienda.com',
+    password: 'Contraseña',
+    submit: 'Entrar',
+    submitting: 'Entrando…',
+    errorInvalid: 'Correo o contraseña incorrectos.',
+    errorGeneric: 'No se pudo iniciar sesión. Intenta de nuevo.',
+  },
+  shift: {
+    title: 'Abrir turno',
+    subtitle: 'Antes de vender, declara el efectivo con el que arrancas la caja.',
+    branch: 'Sucursal',
+    register: 'Caja',
+    registerPlaceholder: 'Elige una caja',
+    openingBalance: 'Fondo inicial (efectivo)',
+    submit: 'Abrir turno',
+    submitting: 'Abriendo turno…',
+    errorGeneric: 'No se pudo abrir el turno. Intenta de nuevo.',
+    loadingRegisters: 'Cargando cajas…',
+    noRegisters: 'No hay cajas disponibles en tu sucursal. Pide a un administrador que registre una.',
+  },
+  sale: {
+    shiftBadge: 'Turno abierto',
+    searchLabel: 'Buscar producto',
+    searchPlaceholder: 'Nombre, código o escanea el producto',
+    searching: 'Buscando…',
+    noResults: 'No se encontró ningún producto con ese nombre o código.',
+    addToCart: 'Agregar',
+    cart: 'Carrito',
+    emptyCart: 'Todavía no has agregado productos.',
+    quantity: 'Cantidad',
+    remove: 'Quitar',
+    total: 'Total a cobrar',
+    paymentMethod: 'Método de pago',
+    methodCash: 'Efectivo',
+    methodCard: 'Tarjeta',
+    methodTransfer: 'Transferencia',
+    cashReceived: 'Efectivo recibido',
+    change: 'Cambio a entregar',
+    changeInsufficient: 'El efectivo recibido es menor al total.',
+    charge: 'Cobrar',
+    chargeSubmitting: 'Registrando venta…',
+    cancelSale: 'Cancelar venta',
+    confirmCancelSale: '¿Cancelar la venta? Se va a vaciar el carrito.',
+    confirmCancelSaleYes: 'Sí, cancelar venta',
+    errorGeneric: 'No se pudo registrar la venta. Intenta de nuevo.',
+    errorNoItems: 'Agrega al menos un producto antes de cobrar.',
+  },
+  confirmation: {
+    title: '¡Venta registrada!',
+    totalCharged: 'Total cobrado',
+    changeGiven: 'Cambio entregado',
+    newSale: 'Nueva venta',
+  },
+} as const
+
+export type Strings = typeof es
