@@ -108,7 +108,7 @@ Cada feature es dueña de su propio estado (Context o similar, como ya usan) y s
 | Campo | Tipo | Nota |
 |---|---|---|
 | branch, cash_register, shift | FKs | |
-| client | FK Client, nullable | **Construido en el punto 5.** Obligatorio solo si algún `Payment` de la venta es `CREDIT` (`sales.services.create_sale` lo exige y llama a `customers.services.charge_credit`) — el resto de ventas no lo necesita. |
+| client | FK Client, nullable | **Construido en el punto 5** (ver §4.4) — obligatorio solo si algún `Payment` de la venta es `CREDIT`. |
 | client_uuid | UUID, unique | Confirmado en el modelo desde ahora, sin default a nivel modelo |
 | occurred_at | datetime | Distinto de `created_at`, lo declara el cliente |
 | created_at | datetime (auto_now_add) | Cuándo llegó al servidor |
@@ -132,7 +132,7 @@ Cada feature es dueña de su propio estado (Context o similar, como ya usan) y s
 | Campo | Tipo | Nota |
 |---|---|---|
 | sale | FK Sale | |
-| method | choices: `CASH`, `CARD`, `TRANSFER`, `CREDIT` | `CREDIT` conectado con `customers` desde el punto 5: exige `Sale.client` y dispara un `CreditMovement` `CARGO` vía `customers.services.charge_credit`; si excede `credit_limit`, la venta completa se revierte (stock incluido) |
+| method | choices: `CASH`, `CARD`, `TRANSFER`, `CREDIT` | `CREDIT` conectado con `customers` desde el punto 5 — ver §4.4 |
 | amount | Decimal | Una venta puede tener N registros Payment que suman el total |
 
 ### 4.3 `catalog`
@@ -158,27 +158,31 @@ Cada feature es dueña de su propio estado (Context o similar, como ya usan) y s
 
 **Confirmado sin ambigüedad durante construcción:** `Product.unit_type` es únicamente un campo de choices informativo — no tiene lógica de venta a granel embebida. Esa lógica (cómo se captura/valida una venta por KG/LITRO, integración de báscula si aplica) pertenece 100% a `sales`, no a `catalog`. `requires_batch` es igualmente informativo: no hay constraint de BD que ate `Product` a `Batch` en ningún sentido — lo confirma `RequiresBatchIndependenceTests`, que prueba las 4 combinaciones posibles.
 
-### 4.4 `customers` *(100% nuevo — construido en el punto 5)*
+### 4.4 `customers` — construido (punto 5)
 
 **Client**
 | Campo | Tipo | Nota |
 |---|---|---|
-| company | FK (vía `BaseTenantModel`) | **Decisión tomada al construir**: escalado por `company`, no por `branch` — un cliente puede comprar fiado en cualquier sucursal del tenant, la tabla original solo decía "branch/company FK" sin ser más específica. No se agregó campo `branch`. |
+| company | FK | **Decisión tomada durante construcción**: escalado por `company`, no por `branch` — la tabla original era ambigua en esto. Razón: un cliente con fiado compra típicamente en cualquier sucursal del mismo negocio, no queda amarrado a una; si el tenant abre una segunda sucursal, el cliente y su saldo de crédito deben seguir siendo los mismos, no duplicarse por sucursal. |
 | name, phone | str | |
-| credit_limit | Decimal, default 0 | Sin límite explícito, el cliente no tiene crédito — se enforce en `customers.services.charge_credit`, si no el campo sería decorativo |
+| credit_limit | Decimal | **No es decorativo** — ver `charge_credit` abajo, se valida antes de mutar cualquier dato |
 
 **CreditAccount**
 | Campo | Tipo | Nota |
 |---|---|---|
-| client | FK Client (1:1) | Se crea automático al crear el `Client` (`Client.save()`) — nunca queda un cliente sin cuenta |
-| balance | Decimal | Solo se muta vía `charge_credit`/`pay_credit`, nunca directo — el ViewSet es de solo lectura + acción `pay` |
+| client | FK Client (1:1) | Se crea automáticamente al crear el `Client` — nunca queda un `Client` sin `CreditAccount` |
+| balance | Decimal | |
 
-**CreditMovement** — anidado en `CreditAccount`, sin ViewSet propio (ver regla del mixin en la sección 5, ya aplicada aquí: `sale_id` en la acción `pay` se resuelve a mano, no vía `TenantScopedFieldsMixin`)
+**CreditMovement** — anidado en `CreditAccount`, sin ViewSet propio (se crea vía `CreditAccountViewSet.pay` o automático desde `sales`)
 | Campo | Tipo | Nota |
 |---|---|---|
 | account | FK CreditAccount | |
-| sale | FK Sale, nullable | Nullable porque un abono no viene de una venta — confirmado con test explícito (`customers/tests/test_credit.py::test_abono_without_sale_updates_balance_correctly`) |
-| amount, type (`CARGO`/`ABONO`) | | `CARGO` se crea automático desde `sales.services.create_sale` cuando hay `Payment.method=CREDIT`; `ABONO` se crea manual vía `POST /api/v1/credit-accounts/{id}/pay/` |
+| sale | FK Sale, nullable | Nullable porque un abono (`ABONO`) no viene de una venta — confirmado por test dedicado que un abono sin venta actualiza `balance` correctamente |
+| amount, type (`CARGO`/`ABONO`) | | |
+
+**Integración con `sales` (cierra el pospuesto del punto 4):** `Sale.client` ya está conectado — nullable, obligatorio solo cuando algún `Payment` es `CREDIT`. `create_sale` llama a `customers.services.charge_credit` por el monto a crédito, **dentro de la misma transacción** que la venta. **Si `credit_limit` se excede, el rollback es completo: la venta entera se revierte, incluyendo el descuento de stock, no solo el cargo de crédito.** Esta garantía (transaccionalidad de punta a punta, no solo del pago) es más estricta que lo que el blueprint especificaba explícitamente — queda fijada por tests y es el comportamiento esperado de aquí en adelante, no algo a relajar sin decisión explícita.
+
+**Excepción real a la regla de `TenantScopedFieldsMixin` en anidados (sección 5):** `CreditMovementInputSerializer.sale_id` se resuelve a mano (es un serializer anidado) — probado que un `sale_id` de otro tenant da 404 sin tocar el balance. `CreditAccountSerializer.client` sí usa el mixin normalmente, porque es un campo top-level, no anidado — confirma que la regla se aplicó con criterio, no de forma mecánica.
 
 ### 4.5 `audit` — extraído tal cual, sin cambios.
 
@@ -199,7 +203,7 @@ Esto reemplaza el patrón de `pharma_core` (filtro manual repetido por ViewSet) 
 
 **Pieza agregada durante construcción, ahora parte del patrón:** `core/serializers.py::TenantScopedFieldsMixin` — acota los querysets de campos FK en serializers (ej. `branch`, `category`, `supplier`) al tenant del request. Nace de un vector de fuga encontrado dos veces por separado (`CashRegisterSerializer.branch`, luego `Product.category`/`.supplier` y `Batch.product`/`.branch`): sin esto, un FK sin acotar en un serializer permite crear/editar un registro apuntando a datos de otro tenant, aunque el queryset de lectura ya esté filtrado por `TenantScopedQuerySet`. **Regla derivada: todo serializer con un campo FK debe usar este mixin, no es opcional ni caso por caso** — el aislamiento a nivel API no está completo solo con el queryset de lectura, también hay que acotar lo que se puede *escribir*.
 
-**Límite conocido del mixin, encontrado en `sales` — aplica a cualquier app futura con serializers anidados:** `TenantScopedFieldsMixin` **no funciona en serializers declarados como atributo de clase dentro de otro serializer** (el `request` no existe todavía en su `__init__` en ese punto de la carga). En `SaleDetail` (anidado dentro de `Sale`), `product_id`/`batch_id` se resuelven a mano en vez de vía el mixin; el mixin sí se usa en el campo top-level (`cash_shift`). **Regla para cualquier app futura:** si un serializer va anidado como atributo de clase, sus FKs se acotan a mano (con el mismo criterio de seguridad, solo que sin el mixin) — no asumir que "usar el mixin" alcanza solo porque el serializer lo importa. **Aplicada al construir `customers` (punto 5)**: `CreditMovementInputSerializer.sale_id` (usado por `CreditAccountViewSet.pay`) es un `IntegerField` plano resuelto a mano contra `Sale.objects.for_user(...)`, no un `PrimaryKeyRelatedField` con el mixin — probado explícitamente en `customers/tests/test_isolation.py::test_pay_rejects_sale_id_belonging_to_another_tenant`. `CreditAccountSerializer.client` sí usa el mixin (serializer top-level, no anidado).
+**Límite conocido del mixin, encontrado en `sales` — aplica a cualquier app futura con serializers anidados:** `TenantScopedFieldsMixin` **no funciona en serializers declarados como atributo de clase dentro de otro serializer** (el `request` no existe todavía en su `__init__` en ese punto de la carga). En `SaleDetail` (anidado dentro de `Sale`), `product_id`/`batch_id` se resuelven a mano en vez de vía el mixin; el mixin sí se usa en el campo top-level (`cash_shift`). **Regla para cualquier app futura:** si un serializer va anidado como atributo de clase, sus FKs se acotan a mano (con el mismo criterio de seguridad, solo que sin el mixin) — no asumir que "usar el mixin" alcanza solo porque el serializer lo importa. **Ya aplicada al construir `customers` (punto 5)** — ver el detalle en §4.4.
 
 ---
 
@@ -236,7 +240,7 @@ Esto reemplaza el patrón de `pharma_core` (filtro manual repetido por ViewSet) 
 2. Extracción de piezas "tal cual" (`audit`, permisos, `CashRegister`/`CashShift`, reportes genéricos, feature flags) como paquete compartido.
 3. `catalog` (Product generalizado, con `image` desde el diseño aunque no se use aún).
 4. `sales` (Sale/SaleDetail/Payment rediseñados — pago dividido, impuestos reales, `client_uuid`/`occurred_at` en el modelo aunque la cola de sync no se construya todavía).
-5. `customers` (fiado) — greenfield. ✅ Construido: `Client`/`CreditAccount`/`CreditMovement`, `Sale.client` conectado (antes pospuesto), `Payment.method=CREDIT` carga a `CreditAccount` vía `sales.services.create_sale` -> `customers.services.charge_credit`.
+5. `customers` (fiado) — greenfield. ✅ Construido: `Client`/`CreditAccount`/`CreditMovement`, `Sale.client` conectado, `Payment.method=CREDIT` carga a `CreditAccount` (ver §4.4).
 6. Capability `can_authorize_exceptions` + endpoint de PIN — greenfield.
 7. Frontend: features de venta/caja primero (son el corazón del uso diario), catálogo y clientes después.
 8. Integración de hardware en tienda real + pruebas con el cliente.
