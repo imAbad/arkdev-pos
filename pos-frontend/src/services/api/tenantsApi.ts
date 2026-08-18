@@ -37,6 +37,17 @@ export async function updateCompanySettings(
   return response.data
 }
 
+/** Punto 12: logo real vía FormData/multipart — un ImageField no acepta
+ * el mismo PATCH JSON que el resto de campos de CompanySettings. */
+export async function updateCompanyLogo(id: number, file: File): Promise<CompanySettings> {
+  const formData = new FormData()
+  formData.append('logo', file)
+  const response = await apiClient.patch<CompanySettings>(`/company-settings/${id}/`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return response.data
+}
+
 // Punto 9 — gestión de usuarios, ADMINISTRADOR exclusivo (ver
 // core.permissions.IsAdministrator en UserProfileViewSet).
 export async function listUsers(): Promise<UserProfile[]> {

@@ -267,6 +267,25 @@ export const es = {
     createErrorGeneric: 'No se pudo crear el usuario. Intenta de nuevo.',
     createdNotice: 'Usuario creado.',
   },
+  branding: {
+    navLink: 'Mi negocio',
+    title: 'Mi negocio',
+    subtitle: 'El nombre, logo y color aparecen en el encabezado de la app y en los tickets de venta.',
+    back: 'Volver a vender',
+    loading: 'Cargando…',
+    businessName: 'Nombre del negocio',
+    accentColor: 'Color de marca',
+    save: 'Guardar cambios',
+    saved: 'Cambios guardados.',
+    errorGeneric: 'No se pudo guardar el cambio. Intenta de nuevo.',
+    logoTitle: 'Logo',
+    logoNone: 'Todavía no has subido un logo.',
+    chooseLogo: 'Elegir imagen',
+    uploadLogo: 'Subir logo',
+    uploadingLogo: 'Subiendo…',
+    logoUploaded: 'Logo actualizado.',
+    logoErrorGeneric: 'No se pudo subir el logo. Intenta de nuevo.',
+  },
 } as const
 
 export type Strings = typeof es

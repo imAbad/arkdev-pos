@@ -31,6 +31,8 @@ export function fakeNavigationValue(overrides: Partial<NavigationContextValue> =
     closeLowStock: () => {},
     openUsers: () => {},
     closeUsers: () => {},
+    openBranding: () => {},
+    closeBranding: () => {},
     ...overrides,
   }
 }

@@ -37,6 +37,14 @@ from tenants.models import Branch, Company, CompanySettings, SupervisorAuthoriza
 
 DEMO_PASSWORD = 'demo1234'
 
+# `accent_color` de cada tenant demo abajo (naranja/azul-morado) es
+# arbitrario, solo para poder distinguir a simple vista los 2 tenants de
+# prueba entre sí en pantalla — NO es el color por default del producto.
+# El default real es azul `#1E5B94` (tenants.models.CompanySettings.
+# accent_color, aplicado automáticamente a cualquier tenant nuevo que no
+# pase uno explícito — punto 12 de la sesión de construcción, confirmado
+# explícitamente aquí para que nadie confunda estos dos colores de demo
+# con una decisión de branding real).
 TENANTS = [
     {
         'company_name': 'Abarrotes La Fortuna',

@@ -6,6 +6,7 @@ import { SaleScreen } from '@/features/sales/SaleScreen'
 import { ReportsScreen } from '@/features/reports/ReportsScreen'
 import { ModuleSettingsScreen } from '@/features/admin/ModuleSettingsScreen'
 import { UserManagementScreen } from '@/features/admin/UserManagementScreen'
+import { StoreBrandingScreen } from '@/features/admin/StoreBrandingScreen'
 import { RelatedProductsScreen } from '@/features/catalog/RelatedProductsScreen'
 import { LowStockScreen } from '@/features/catalog/LowStockScreen'
 import { getCurrentShift } from '@/services/api/salesApi'
@@ -20,7 +21,7 @@ import type { CashShift } from '@/types/api'
 // tienda — puntos 3/8/9/12) siguen el mismo patrón por ahora. El punto 13
 // de esta sesión reemplaza esto por un router real con sidebar — no antes,
 // para no reescribir esto cinco veces mientras las pantallas se construyen.
-export type ViewKey = 'main' | 'reports' | 'modules' | 'catalog' | 'low-stock' | 'users'
+export type ViewKey = 'main' | 'reports' | 'modules' | 'catalog' | 'low-stock' | 'users' | 'branding'
 
 export interface NavigationContextValue {
   view: ViewKey
@@ -34,6 +35,8 @@ export interface NavigationContextValue {
   closeLowStock: () => void
   openUsers: () => void
   closeUsers: () => void
+  openBranding: () => void
+  closeBranding: () => void
 }
 
 // Sin valor por default null-y-throw (a diferencia de useAuth): AppHeader
@@ -55,6 +58,8 @@ export const NavigationContext = createContext<NavigationContextValue>({
   closeLowStock: () => {},
   openUsers: () => {},
   closeUsers: () => {},
+  openBranding: () => {},
+  closeBranding: () => {},
 })
 
 export function useNavigation(): NavigationContextValue {
@@ -84,6 +89,8 @@ function AppScreens() {
     closeLowStock: () => setView('main'),
     openUsers: () => setView('users'),
     closeUsers: () => setView('main'),
+    openBranding: () => setView('branding'),
+    closeBranding: () => setView('main'),
   }
 
   return <NavigationContext.Provider value={navigationValue}>{renderScreen()}</NavigationContext.Provider>
@@ -115,6 +122,10 @@ function AppScreens() {
 
     if (view === 'users') {
       return <UserManagementScreen />
+    }
+
+    if (view === 'branding') {
+      return <StoreBrandingScreen />
     }
 
     if (shift === 'loading') {
