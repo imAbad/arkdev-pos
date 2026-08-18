@@ -3,8 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
 import { render, screen } from '@testing-library/react'
 import { AuthContext, type AuthContextValue } from '@/features/auth/AuthProvider'
-import { NavigationContext } from '@/App'
-import { fakeAuthValue, fakeNavigationValue } from '@/test/test-utils'
+import { fakeAuthValue } from '@/test/test-utils'
 import { server } from '@/test/server'
 import { makeCompanySettings, makeProfile } from '@/test/fixtures'
 import { t } from '@/i18n'
@@ -12,7 +11,7 @@ import { StoreBrandingScreen } from './StoreBrandingScreen'
 
 const BASE = import.meta.env.VITE_API_BASE_URL
 
-function renderScreen(authOverrides: Partial<AuthContextValue> = {}, closeBranding = vi.fn()) {
+function renderScreen(authOverrides: Partial<AuthContextValue> = {}) {
   const auth = fakeAuthValue({
     profile: makeProfile({ role: 'ADMINISTRADOR' }),
     companySettings: makeCompanySettings({ id: 7, business_name: 'Abarrotes Don Chuy', accent_color: '#1E5B94', logo: null }),
@@ -20,9 +19,7 @@ function renderScreen(authOverrides: Partial<AuthContextValue> = {}, closeBrandi
   })
   return render(
     <AuthContext.Provider value={auth}>
-      <NavigationContext.Provider value={fakeNavigationValue({ view: 'branding', closeBranding })}>
-        <StoreBrandingScreen />
-      </NavigationContext.Provider>
+      <StoreBrandingScreen />
     </AuthContext.Provider>,
   )
 }
@@ -97,14 +94,5 @@ describe('StoreBrandingScreen', () => {
     expect(await screen.findByText(t.branding.logoUploaded)).toBeInTheDocument()
     expect(receivedContentType).toMatch(/multipart\/form-data/)
     expect(refreshCompanySettings).toHaveBeenCalledTimes(1)
-  })
-
-  it('"Volver a vender" llama a closeBranding', async () => {
-    const closeBranding = vi.fn()
-    const user = userEvent.setup()
-    renderScreen({}, closeBranding)
-
-    await user.click(screen.getByRole('button', { name: t.branding.back }))
-    expect(closeBranding).toHaveBeenCalledTimes(1)
   })
 })

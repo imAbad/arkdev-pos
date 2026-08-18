@@ -1,104 +1,51 @@
-import { describe, expect, it } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
-import { http, HttpResponse } from 'msw'
+import { describe, expect, it, vi } from 'vitest'
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { AuthContext } from '@/features/auth/AuthProvider'
-import { NavigationContext } from '@/App'
-import { fakeAuthValue, fakeNavigationValue } from '@/test/test-utils'
-import { makeProfile } from '@/test/fixtures'
-import { server } from '@/test/server'
+import { fakeAuthValue } from '@/test/test-utils'
+import { makeBranch, makeCompanySettings, makeProfile } from '@/test/fixtures'
 import { t } from '@/i18n'
 import { AppHeader } from './app-header'
 
-const BASE = import.meta.env.VITE_API_BASE_URL
-const LOW_STOCK_URL = `${BASE}/low-stock/`
-
-function renderHeader(profile: ReturnType<typeof makeProfile>) {
-  const auth = fakeAuthValue({ profile })
-  return render(
-    <AuthContext.Provider value={auth}>
-      <NavigationContext.Provider value={fakeNavigationValue()}>
+/** Punto 13: la navegación entre pantallas se movió al Sidebar (ver
+ * sidebar.test.tsx) — AppHeader ya solo es identidad del tenant +
+ * cerrar sesión. */
+describe('AppHeader', () => {
+  it('muestra el nombre del negocio y la sucursal', () => {
+    const auth = fakeAuthValue({
+      companySettings: makeCompanySettings({ business_name: 'Abarrotes Don Chuy' }),
+      branch: makeBranch({ name: 'Centro' }),
+    })
+    render(
+      <AuthContext.Provider value={auth}>
         <AppHeader />
-      </NavigationContext.Provider>
-    </AuthContext.Provider>,
-  )
-}
-
-describe('AppHeader — link de Reportes (punto 2: mismo acceso para Supervisor que Administrador)', () => {
-  it('lo muestra a un ADMINISTRADOR', () => {
-    renderHeader(makeProfile({ role: 'ADMINISTRADOR' }))
-    expect(screen.getByRole('button', { name: t.reports.navLink })).toBeInTheDocument()
-  })
-
-  it('lo muestra a un CAJERO con can_authorize_exceptions (Supervisor)', () => {
-    renderHeader(makeProfile({ role: 'CAJERO', capabilities: { can_authorize_exceptions: true } }))
-    expect(screen.getByRole('button', { name: t.reports.navLink })).toBeInTheDocument()
-  })
-
-  it('NO lo muestra a un CAJERO plano', () => {
-    renderHeader(makeProfile({ role: 'CAJERO', capabilities: { handles_cash: true } }))
-    expect(screen.queryByRole('button', { name: t.reports.navLink })).not.toBeInTheDocument()
-  })
-})
-
-describe('AppHeader — link de Relacionados (punto 5, exclusivo de ADMINISTRADOR)', () => {
-  it('lo muestra a un ADMINISTRADOR', () => {
-    renderHeader(makeProfile({ role: 'ADMINISTRADOR' }))
-    expect(screen.getByRole('button', { name: t.relatedProducts.navLink })).toBeInTheDocument()
-  })
-
-  it('NO lo muestra a un Supervisor (CAJERO con can_authorize_exceptions)', () => {
-    renderHeader(makeProfile({ role: 'CAJERO', capabilities: { can_authorize_exceptions: true } }))
-    expect(screen.queryByRole('button', { name: t.relatedProducts.navLink })).not.toBeInTheDocument()
-  })
-})
-
-describe('AppHeader — link de Usuarios (punto 9, exclusivo de ADMINISTRADOR sin excepción)', () => {
-  it('lo muestra a un ADMINISTRADOR', () => {
-    renderHeader(makeProfile({ role: 'ADMINISTRADOR' }))
-    expect(screen.getByRole('button', { name: t.users.navLink })).toBeInTheDocument()
-  })
-
-  it('NO lo muestra a un Supervisor (CAJERO con can_authorize_exceptions)', () => {
-    renderHeader(makeProfile({ role: 'CAJERO', capabilities: { can_authorize_exceptions: true } }))
-    expect(screen.queryByRole('button', { name: t.users.navLink })).not.toBeInTheDocument()
-  })
-})
-
-describe('AppHeader — link de Mi negocio (punto 12, exclusivo de ADMINISTRADOR)', () => {
-  it('lo muestra a un ADMINISTRADOR', () => {
-    renderHeader(makeProfile({ role: 'ADMINISTRADOR' }))
-    expect(screen.getByRole('button', { name: t.branding.navLink })).toBeInTheDocument()
-  })
-
-  it('NO lo muestra a un Supervisor (CAJERO con can_authorize_exceptions)', () => {
-    renderHeader(makeProfile({ role: 'CAJERO', capabilities: { can_authorize_exceptions: true } }))
-    expect(screen.queryByRole('button', { name: t.branding.navLink })).not.toBeInTheDocument()
-  })
-})
-
-describe('AppHeader — badge de stock bajo (punto 7: visible a cualquier usuario, no solo admin/supervisor)', () => {
-  it('lo muestra a un CAJERO plano cuando hay productos con stock bajo', async () => {
-    server.use(
-      http.get(LOW_STOCK_URL, () =>
-        HttpResponse.json([{ product_id: 1, product_name: 'Yogurt', sku: 'YOG-1', current_stock: 1, min_stock: 5 }]),
-      ),
+      </AuthContext.Provider>,
     )
-    renderHeader(makeProfile({ role: 'CAJERO', capabilities: {} }))
-
-    expect(await screen.findByRole('button', { name: `${t.lowStock.badgeLabel} (1)` })).toBeInTheDocument()
+    expect(screen.getByText('Abarrotes Don Chuy')).toBeInTheDocument()
+    expect(screen.getByText('Centro')).toBeInTheDocument()
   })
 
-  it('NO lo muestra cuando no hay productos con stock bajo', async () => {
-    let requestResolved = false
-    server.use(
-      http.get(LOW_STOCK_URL, () => {
-        requestResolved = true
-        return HttpResponse.json([])
-      }),
+  it('usa el nombre genérico de la app si el tenant no configuró un business_name', () => {
+    const auth = fakeAuthValue({ companySettings: makeCompanySettings({ business_name: '' }) })
+    render(
+      <AuthContext.Provider value={auth}>
+        <AppHeader />
+      </AuthContext.Provider>,
     )
-    renderHeader(makeProfile({ role: 'CAJERO', capabilities: {} }))
+    expect(screen.getByText(t.common.appName)).toBeInTheDocument()
+  })
 
-    await waitFor(() => expect(requestResolved).toBe(true))
-    expect(screen.queryByRole('button', { name: /Stock bajo/ })).not.toBeInTheDocument()
+  it('cerrar sesión llama a logout', async () => {
+    const logout = vi.fn()
+    const auth = fakeAuthValue({ profile: makeProfile(), logout })
+    const user = userEvent.setup()
+    render(
+      <AuthContext.Provider value={auth}>
+        <AppHeader />
+      </AuthContext.Provider>,
+    )
+
+    await user.click(screen.getByRole('button', { name: t.common.logout }))
+    expect(logout).toHaveBeenCalledTimes(1)
   })
 })

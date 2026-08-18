@@ -1,11 +1,9 @@
 import { useState } from 'react'
-import { AppHeader } from '@/components/app-header'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { apiErrorMessage } from '@/lib/api-client'
-import { useNavigation } from '@/App'
 import { useAuth } from '@/features/auth/AuthProvider'
 import { updateCompanyLogo, updateCompanySettings } from '@/services/api/tenantsApi'
 import { t } from '@/i18n'
@@ -20,7 +18,6 @@ const HEX_COLOR_PATTERN = /^#[0-9A-Fa-f]{6}$/
  * seed_demo_data los distingue entre sí, no el default real (ver
  * comentario en ese archivo). */
 export function StoreBrandingScreen() {
-  const { closeBranding } = useNavigation()
   const { companySettings, refreshCompanySettings } = useAuth()
   const [businessName, setBusinessName] = useState(companySettings?.business_name ?? '')
   const [accentColor, setAccentColor] = useState(companySettings?.accent_color ?? '#1E5B94')
@@ -70,24 +67,16 @@ export function StoreBrandingScreen() {
   const validColor = HEX_COLOR_PATTERN.test(accentColor)
 
   return (
-    <div className="flex min-h-svh flex-col bg-surface-muted">
-      <AppHeader />
+    <div className="flex flex-1 flex-col gap-6 p-6">
+      <div>
+        <h1 className="text-3xl font-bold text-ink">{t.branding.title}</h1>
+        <p className="mt-2 text-lg text-ink/70">{t.branding.subtitle}</p>
+      </div>
 
-      <div className="flex flex-1 flex-col gap-6 p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-ink">{t.branding.title}</h1>
-            <p className="mt-2 text-lg text-ink/70">{t.branding.subtitle}</p>
-          </div>
-          <Button type="button" variant="neutral" onClick={closeBranding}>
-            {t.branding.back}
-          </Button>
-        </div>
-
-        {companySettings === null ? (
-          <p className="text-lg text-ink/70">{t.branding.loading}</p>
-        ) : (
-          <>
+      {companySettings === null ? (
+        <p className="text-lg text-ink/70">{t.branding.loading}</p>
+      ) : (
+        <>
             <Card>
               <form onSubmit={(e) => void handleSave(e)} className="flex flex-wrap items-end gap-4">
                 <div>
@@ -164,10 +153,9 @@ export function StoreBrandingScreen() {
                   {logoError}
                 </p>
               )}
-            </Card>
-          </>
-        )}
-      </div>
+          </Card>
+        </>
+      )}
     </div>
   )
 }

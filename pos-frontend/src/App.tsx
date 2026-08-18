@@ -1,4 +1,5 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider, useAuth } from '@/features/auth/AuthProvider'
 import { LoginScreen } from '@/features/auth/LoginScreen'
 import { OpenShiftScreen } from '@/features/shift/OpenShiftScreen'
@@ -9,135 +10,108 @@ import { UserManagementScreen } from '@/features/admin/UserManagementScreen'
 import { StoreBrandingScreen } from '@/features/admin/StoreBrandingScreen'
 import { RelatedProductsScreen } from '@/features/catalog/RelatedProductsScreen'
 import { LowStockScreen } from '@/features/catalog/LowStockScreen'
+import { AppLayout } from '@/components/app-layout'
+import { isAdministrator, isAdministratorOrSupervisor } from '@/lib/permissions'
 import { getCurrentShift } from '@/services/api/salesApi'
 import { t } from '@/i18n'
 import type { CashShift } from '@/types/api'
 
-// Navegación mínima sin router (a propósito — ver arquitectura_tecnica_pos.md
-// §3: "se agrega un router cuando haya navegación real que lo justifique
-// -catálogo, reportes, admin- no antes"). Reportes fue la primera pantalla
-// alcanzable independientemente del flujo turno/venta; el resto de
-// pantallas de administración (módulos, catálogo, usuarios, config. de
-// tienda — puntos 3/8/9/12) siguen el mismo patrón por ahora. El punto 13
-// de esta sesión reemplaza esto por un router real con sidebar — no antes,
-// para no reescribir esto cinco veces mientras las pantallas se construyen.
-export type ViewKey = 'main' | 'reports' | 'modules' | 'catalog' | 'low-stock' | 'users' | 'branding'
-
-export interface NavigationContextValue {
-  view: ViewKey
-  openReports: () => void
-  closeReports: () => void
-  openModules: () => void
-  closeModules: () => void
-  openCatalog: () => void
-  closeCatalog: () => void
-  openLowStock: () => void
-  closeLowStock: () => void
-  openUsers: () => void
-  closeUsers: () => void
-  openBranding: () => void
-  closeBranding: () => void
+/** Punto 13: rutas reales (react-router-dom) con un sidebar que se
+ * adapta al rol de quien inició sesión — reemplaza el NavigationContext/
+ * ViewKey a mano que arquitectura_tecnica_pos.md §3 ya marcaba como
+ * temporal ("se agrega un router cuando haya navegación real que lo
+ * justifique -catálogo, reportes, admin- no antes"). Con 6 pantallas de
+ * administración además de vender, ese momento ya llegó.
+ *
+ * El gate de rol aquí es UX (evita un 403 crudo si alguien escribe la
+ * URL a mano), no el control de acceso real — ese sigue siendo el
+ * backend (core.permissions.*), esto solo evita mostrar una pantalla que
+ * de todas formas va a rechazar cada request. */
+function RequireAdmin({ children }: { children: ReactNode }) {
+  const { profile } = useAuth()
+  if (!isAdministrator(profile)) return <Navigate to="/" replace />
+  return <>{children}</>
 }
 
-// Sin valor por default null-y-throw (a diferencia de useAuth): AppHeader
-// llama a este hook y se renderiza en tests de pantallas aisladas
-// (renderWithAuth) que no envuelven con <App/> — un default silencioso
-// (sin navegar a ningún lado) es más simple que forzar a cada test de
-// pantalla a montar también este contexto. Exportado (no solo el hook)
-// para que los tests de ReportsScreen puedan proveer un value propio con
-// closeReports espiado — mismo patrón que AuthContext/renderWithAuth.
-export const NavigationContext = createContext<NavigationContextValue>({
-  view: 'main',
-  openReports: () => {},
-  closeReports: () => {},
-  openModules: () => {},
-  closeModules: () => {},
-  openCatalog: () => {},
-  closeCatalog: () => {},
-  openLowStock: () => {},
-  closeLowStock: () => {},
-  openUsers: () => {},
-  closeUsers: () => {},
-  openBranding: () => {},
-  closeBranding: () => {},
-})
-
-export function useNavigation(): NavigationContextValue {
-  return useContext(NavigationContext)
+function RequireAdminOrSupervisor({ children }: { children: ReactNode }) {
+  const { profile } = useAuth()
+  if (!isAdministratorOrSupervisor(profile)) return <Navigate to="/" replace />
+  return <>{children}</>
 }
 
-function AppScreens() {
-  const { status } = useAuth()
+/** El flujo de venta (abrir turno -> vender) vive en "/" tal cual estaba
+ * antes de este punto — el router solo reemplaza cómo se llega a las
+ * OTRAS pantallas, no cómo se abre turno o se vende. */
+function SaleFlowScreen() {
   const [shift, setShift] = useState<CashShift | null | 'loading'>('loading')
-  const [view, setView] = useState<ViewKey>('main')
 
   useEffect(() => {
-    if (status !== 'authenticated') return
-    setShift('loading')
     getCurrentShift().then(setShift)
-  }, [status])
+  }, [])
 
-  const navigationValue: NavigationContextValue = {
-    view,
-    openReports: () => setView('reports'),
-    closeReports: () => setView('main'),
-    openModules: () => setView('modules'),
-    closeModules: () => setView('main'),
-    openCatalog: () => setView('catalog'),
-    closeCatalog: () => setView('main'),
-    openLowStock: () => setView('low-stock'),
-    closeLowStock: () => setView('main'),
-    openUsers: () => setView('users'),
-    closeUsers: () => setView('main'),
-    openBranding: () => setView('branding'),
-    closeBranding: () => setView('main'),
+  if (shift === 'loading') {
+    return <FullScreenMessage message={t.common.loading} />
   }
 
-  return <NavigationContext.Provider value={navigationValue}>{renderScreen()}</NavigationContext.Provider>
-
-  function renderScreen() {
-    if (status === 'loading') {
-      return <FullScreenMessage message={t.common.loading} />
-    }
-
-    if (status === 'unauthenticated') {
-      return <LoginScreen />
-    }
-
-    if (view === 'reports') {
-      return <ReportsScreen />
-    }
-
-    if (view === 'modules') {
-      return <ModuleSettingsScreen />
-    }
-
-    if (view === 'catalog') {
-      return <RelatedProductsScreen />
-    }
-
-    if (view === 'low-stock') {
-      return <LowStockScreen />
-    }
-
-    if (view === 'users') {
-      return <UserManagementScreen />
-    }
-
-    if (view === 'branding') {
-      return <StoreBrandingScreen />
-    }
-
-    if (shift === 'loading') {
-      return <FullScreenMessage message={t.common.loading} />
-    }
-
-    if (shift === null) {
-      return <OpenShiftScreen onShiftOpened={setShift} />
-    }
-
-    return <SaleScreen shift={shift} />
+  if (shift === null) {
+    return <OpenShiftScreen onShiftOpened={setShift} />
   }
+
+  return <SaleScreen shift={shift} />
+}
+
+function AuthedApp() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route element={<AppLayout />}>
+          <Route path="/" element={<SaleFlowScreen />} />
+          <Route path="/stock-bajo" element={<LowStockScreen />} />
+          <Route
+            path="/reportes"
+            element={
+              <RequireAdminOrSupervisor>
+                <ReportsScreen />
+              </RequireAdminOrSupervisor>
+            }
+          />
+          <Route
+            path="/modulos"
+            element={
+              <RequireAdmin>
+                <ModuleSettingsScreen />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/catalogo/relacionados"
+            element={
+              <RequireAdmin>
+                <RelatedProductsScreen />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/usuarios"
+            element={
+              <RequireAdmin>
+                <UserManagementScreen />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/mi-negocio"
+            element={
+              <RequireAdmin>
+                <StoreBrandingScreen />
+              </RequireAdmin>
+            }
+          />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
+  )
 }
 
 function FullScreenMessage({ message }: { message: string }) {
@@ -148,10 +122,24 @@ function FullScreenMessage({ message }: { message: string }) {
   )
 }
 
+function AppGate() {
+  const { status } = useAuth()
+
+  if (status === 'loading') {
+    return <FullScreenMessage message={t.common.loading} />
+  }
+
+  if (status === 'unauthenticated') {
+    return <LoginScreen />
+  }
+
+  return <AuthedApp />
+}
+
 export default function App() {
   return (
     <AuthProvider>
-      <AppScreens />
+      <AppGate />
     </AuthProvider>
   )
 }

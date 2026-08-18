@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { AppHeader } from '@/components/app-header'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -7,7 +6,6 @@ import { Label } from '@/components/ui/label'
 import { apiErrorMessage } from '@/lib/api-client'
 import { formatCurrency, formatDate, formatDateTime } from '@/lib/format'
 import { cn } from '@/lib/utils'
-import { useNavigation } from '@/App'
 import { t } from '@/i18n'
 import { listBranches } from '@/services/api/tenantsApi'
 import {
@@ -68,7 +66,6 @@ type ReportData =
   | { key: 'closures'; rows: CashShiftClosureRow[] }
 
 export function ReportsScreen() {
-  const { closeReports } = useNavigation()
   const [activeReport, setActiveReport] = useState<ReportKey>('product')
   const [dateFrom, setDateFrom] = useState(thirtyDaysAgoIso())
   const [dateTo, setDateTo] = useState(todayIso())
@@ -164,18 +161,10 @@ export function ReportsScreen() {
   const activeTab = TABS.find((tab) => tab.key === activeReport)!
 
   return (
-    <div className="flex min-h-svh flex-col bg-surface-muted">
-      <AppHeader />
+    <div className="flex flex-1 flex-col gap-6 p-6">
+      <h1 className="text-3xl font-bold text-ink">{t.reports.title}</h1>
 
-      <div className="flex flex-1 flex-col gap-6 p-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold text-ink">{t.reports.title}</h1>
-          <Button type="button" variant="neutral" onClick={closeReports}>
-            {t.reports.back}
-          </Button>
-        </div>
-
-        <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap gap-3">
           {TABS.map((tab) => (
             <button
               key={tab.key}
@@ -268,7 +257,6 @@ export function ReportsScreen() {
 
           {!loading && !error && data && <ReportTable data={data} />}
         </Card>
-      </div>
     </div>
   )
 }

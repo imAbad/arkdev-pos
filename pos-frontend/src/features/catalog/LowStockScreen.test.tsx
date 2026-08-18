@@ -1,10 +1,8 @@
 import { http, HttpResponse } from 'msw'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { AuthContext } from '@/features/auth/AuthProvider'
-import { NavigationContext } from '@/App'
-import { fakeAuthValue, fakeNavigationValue } from '@/test/test-utils'
+import { fakeAuthValue } from '@/test/test-utils'
 import { server } from '@/test/server'
 import { makeProfile } from '@/test/fixtures'
 import { t } from '@/i18n'
@@ -13,13 +11,11 @@ import { LowStockScreen } from './LowStockScreen'
 const BASE = import.meta.env.VITE_API_BASE_URL
 const LOW_STOCK_URL = `${BASE}/low-stock/`
 
-function renderScreen(closeLowStock = vi.fn()) {
+function renderScreen() {
   const auth = fakeAuthValue({ profile: makeProfile({ role: 'CAJERO', capabilities: { handles_cash: true } }) })
   return render(
     <AuthContext.Provider value={auth}>
-      <NavigationContext.Provider value={fakeNavigationValue({ view: 'low-stock', closeLowStock })}>
-        <LowStockScreen />
-      </NavigationContext.Provider>
+      <LowStockScreen />
     </AuthContext.Provider>,
   )
 }
@@ -53,14 +49,5 @@ describe('LowStockScreen', () => {
     renderScreen()
 
     expect(await screen.findByRole('alert')).toHaveTextContent(t.common.errorServer)
-  })
-
-  it('el botón de volver llama a closeLowStock', async () => {
-    const closeLowStock = vi.fn()
-    server.use(http.get(LOW_STOCK_URL, () => HttpResponse.json([])))
-    renderScreen(closeLowStock)
-
-    await userEvent.click(await screen.findByRole('button', { name: t.lowStock.back }))
-    expect(closeLowStock).toHaveBeenCalledTimes(1)
   })
 })

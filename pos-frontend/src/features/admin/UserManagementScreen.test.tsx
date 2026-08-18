@@ -1,13 +1,13 @@
 import { http, HttpResponse } from 'msw'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import userEvent from '@testing-library/user-event'
 import { render, screen, within } from '@testing-library/react'
 import { AuthContext } from '@/features/auth/AuthProvider'
-import { NavigationContext } from '@/App'
-import { fakeAuthValue, fakeNavigationValue } from '@/test/test-utils'
+import { fakeAuthValue } from '@/test/test-utils'
 import { server } from '@/test/server'
 import { makeBranch, makeProfile } from '@/test/fixtures'
 import { t } from '@/i18n'
+import type { UserProfile } from '@/types/api'
 import { UserManagementScreen } from './UserManagementScreen'
 
 const BASE = import.meta.env.VITE_API_BASE_URL
@@ -20,7 +20,7 @@ const ADMIN_PROFILE = { id: 1, email: 'admin@donchuy.test', is_active: true, bra
 const CAJERO_PROFILE = { id: 2, email: 'cajero@donchuy.test', is_active: true, branch: 1, role: 'CAJERO' as const, capabilities: { handles_cash: true }, company: 1 }
 const INACTIVE_PROFILE = { id: 3, email: 'exempleado@donchuy.test', is_active: false, branch: 1, role: 'CAJERO' as const, capabilities: {}, company: 1 }
 
-function mockLists(users = [ADMIN_PROFILE, CAJERO_PROFILE]) {
+function mockLists(users: UserProfile[] = [ADMIN_PROFILE, CAJERO_PROFILE]) {
   server.use(
     http.get(USERS_URL, () => HttpResponse.json({ count: users.length, next: null, previous: null, results: users })),
     http.get(BRANCHES_URL, () => HttpResponse.json({ count: 1, next: null, previous: null, results: [CENTRO] })),
@@ -31,9 +31,7 @@ function renderScreen() {
   const auth = fakeAuthValue({ profile: makeProfile({ role: 'ADMINISTRADOR' }) })
   return render(
     <AuthContext.Provider value={auth}>
-      <NavigationContext.Provider value={fakeNavigationValue({ view: 'users', closeUsers: vi.fn() })}>
-        <UserManagementScreen />
-      </NavigationContext.Provider>
+      <UserManagementScreen />
     </AuthContext.Provider>,
   )
 }

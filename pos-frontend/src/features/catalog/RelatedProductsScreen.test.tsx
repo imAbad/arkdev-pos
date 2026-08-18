@@ -1,10 +1,9 @@
 import { http, HttpResponse } from 'msw'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import userEvent from '@testing-library/user-event'
 import { render, screen } from '@testing-library/react'
 import { AuthContext } from '@/features/auth/AuthProvider'
-import { NavigationContext } from '@/App'
-import { fakeAuthValue, fakeNavigationValue } from '@/test/test-utils'
+import { fakeAuthValue } from '@/test/test-utils'
 import { server } from '@/test/server'
 import { makeProduct, makeProfile } from '@/test/fixtures'
 import { t } from '@/i18n'
@@ -26,13 +25,11 @@ function mockSearch(byQuery: Record<string, ReturnType<typeof makeProduct>[]>) {
   )
 }
 
-function renderScreen(closeCatalog = vi.fn()) {
+function renderScreen() {
   const auth = fakeAuthValue({ profile: makeProfile({ role: 'ADMINISTRADOR' }) })
   return render(
     <AuthContext.Provider value={auth}>
-      <NavigationContext.Provider value={fakeNavigationValue({ view: 'catalog', closeCatalog })}>
-        <RelatedProductsScreen />
-      </NavigationContext.Provider>
+      <RelatedProductsScreen />
     </AuthContext.Provider>,
   )
 }
@@ -103,14 +100,5 @@ describe('RelatedProductsScreen', () => {
 
     expect(capturedBody).toEqual({ related_products: [] })
     await screen.findByText(t.relatedProducts.noneYet)
-  })
-
-  it('"Volver a vender" llama a closeCatalog', async () => {
-    const closeCatalog = vi.fn()
-    const user = userEvent.setup()
-    renderScreen(closeCatalog)
-
-    await user.click(screen.getByRole('button', { name: t.relatedProducts.back }))
-    expect(closeCatalog).toHaveBeenCalledTimes(1)
   })
 })

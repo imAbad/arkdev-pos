@@ -4,6 +4,9 @@
 // de componentes — evita repetir el problema que la auditoría encontró en
 // pharma_frontend (strings de farmacia repartidos sin i18n en 9 archivos).
 export const es = {
+  sidebar: {
+    sell: 'Vender',
+  },
   common: {
     appName: 'Punto de Venta',
     logout: 'Cerrar sesión',
@@ -150,7 +153,6 @@ export const es = {
   reports: {
     navLink: 'Reportes',
     title: 'Reportes',
-    back: 'Volver a vender',
     dateFrom: 'Desde',
     dateTo: 'Hasta',
     branch: 'Sucursal',
@@ -199,7 +201,6 @@ export const es = {
     navLink: 'Módulos',
     title: 'Módulos',
     subtitle: 'Enciende o apaga funciones adicionales para tu negocio. Los cambios aplican de inmediato.',
-    back: 'Volver a vender',
     loading: 'Cargando…',
     errorGeneric: 'No se pudieron guardar los cambios. Intenta de nuevo.',
     saved: 'Cambios guardados.',
@@ -212,7 +213,6 @@ export const es = {
     navLink: 'Relacionados',
     title: 'Productos relacionados',
     subtitle: 'Configura qué productos sugerir al cajero cuando alguien agrega este producto a una venta (ej. "Pan" sugiere "Mantequilla").',
-    back: 'Volver a vender',
     chooseProduct: 'Elige un producto',
     currentlyRelated: 'Relacionados actuales',
     noneYet: 'Todavía no tiene productos relacionados.',
@@ -225,7 +225,6 @@ export const es = {
     badgeLabel: 'Stock bajo',
     title: 'Stock bajo',
     subtitle: 'Productos en o por debajo de su stock mínimo configurado.',
-    back: 'Volver a vender',
     loading: 'Cargando…',
     errorGeneric: 'No se pudo cargar el stock bajo. Intenta de nuevo.',
     empty: 'No hay productos con stock bajo en este momento.',
@@ -238,7 +237,6 @@ export const es = {
     navLink: 'Usuarios',
     title: 'Usuarios',
     subtitle: 'Da de alta, edita o desactiva el acceso del personal de tu negocio.',
-    back: 'Volver a vender',
     loading: 'Cargando…',
     errorGeneric: 'No se pudo cargar la lista de usuarios. Intenta de nuevo.',
     colEmail: 'Correo',
@@ -271,7 +269,6 @@ export const es = {
     navLink: 'Mi negocio',
     title: 'Mi negocio',
     subtitle: 'El nombre, logo y color aparecen en el encabezado de la app y en los tickets de venta.',
-    back: 'Volver a vender',
     loading: 'Cargando…',
     businessName: 'Nombre del negocio',
     accentColor: 'Color de marca',

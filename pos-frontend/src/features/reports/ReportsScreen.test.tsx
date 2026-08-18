@@ -4,8 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { screen } from '@testing-library/react'
 import { render } from '@testing-library/react'
 import { AuthContext } from '@/features/auth/AuthProvider'
-import { NavigationContext } from '@/App'
-import { fakeAuthValue, fakeNavigationValue } from '@/test/test-utils'
+import { fakeAuthValue } from '@/test/test-utils'
 import { server } from '@/test/server'
 import { makeBranch, makeProfile } from '@/test/fixtures'
 import { t } from '@/i18n'
@@ -24,13 +23,11 @@ const NEAR_EXPIRY_URL = `${BASE}/reports/near-expiry-stock/`
 URL.createObjectURL = vi.fn(() => 'blob:mock')
 URL.revokeObjectURL = vi.fn()
 
-function renderReportsScreen(closeReports = vi.fn()) {
+function renderReportsScreen() {
   const auth = fakeAuthValue({ profile: makeProfile({ role: 'ADMINISTRADOR' }) })
   return render(
     <AuthContext.Provider value={auth}>
-      <NavigationContext.Provider value={fakeNavigationValue({ view: 'reports', closeReports })}>
-        <ReportsScreen />
-      </NavigationContext.Provider>
+      <ReportsScreen />
     </AuthContext.Provider>,
   )
 }
@@ -101,21 +98,6 @@ describe('ReportsScreen', () => {
     await screen.findByText(t.reports.empty)
     expect(screen.getByRole('option', { name: 'Sucursal Centro' })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: 'Sucursal Norte' })).toBeInTheDocument()
-  })
-
-  it('"Volver a vender" llama a closeReports', async () => {
-    const closeReports = vi.fn()
-    server.use(
-      http.get(BRANCHES_URL, () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
-      http.get(SALES_BY_PRODUCT_URL, () => HttpResponse.json([])),
-    )
-
-    const user = userEvent.setup()
-    renderReportsScreen(closeReports)
-    await screen.findByText(t.reports.empty)
-
-    await user.click(screen.getByRole('button', { name: t.reports.back }))
-    expect(closeReports).toHaveBeenCalledTimes(1)
   })
 
   it('punto 4: "Próximos a caducar" usa un filtro de días, no de fechas, y lo manda como query param', async () => {

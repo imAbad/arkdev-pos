@@ -1,10 +1,7 @@
 import { useState } from 'react'
-import { AppHeader } from '@/components/app-header'
-import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { apiErrorMessage } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
-import { useNavigation } from '@/App'
 import { useAuth } from '@/features/auth/AuthProvider'
 import { updateCompanySettings } from '@/services/api/tenantsApi'
 import { t } from '@/i18n'
@@ -21,7 +18,6 @@ const MODULE_LABELS: Record<ModuleKey, { name: string; description: string }> = 
 }
 
 export function ModuleSettingsScreen() {
-  const { closeModules } = useNavigation()
   const { companySettings, refreshCompanySettings } = useAuth()
   const [savingKey, setSavingKey] = useState<ModuleKey | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -47,21 +43,13 @@ export function ModuleSettingsScreen() {
   }
 
   return (
-    <div className="flex min-h-svh flex-col bg-surface-muted">
-      <AppHeader />
+    <div className="flex flex-1 flex-col gap-6 p-6">
+      <div>
+        <h1 className="text-3xl font-bold text-ink">{t.modules.title}</h1>
+        <p className="mt-2 text-lg text-ink/70">{t.modules.subtitle}</p>
+      </div>
 
-      <div className="flex flex-1 flex-col gap-6 p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-ink">{t.modules.title}</h1>
-            <p className="mt-2 text-lg text-ink/70">{t.modules.subtitle}</p>
-          </div>
-          <Button type="button" variant="neutral" onClick={closeModules}>
-            {t.modules.back}
-          </Button>
-        </div>
-
-        {companySettings === null ? (
+      {companySettings === null ? (
           <p className="text-lg text-ink/70">{t.modules.loading}</p>
         ) : (
           <div className="flex flex-col gap-4">
@@ -99,13 +87,12 @@ export function ModuleSettingsScreen() {
           </div>
         )}
 
-        {savedNotice && <p className="text-lg font-medium text-confirm">{t.modules.saved}</p>}
-        {error && (
-          <p role="alert" className="text-lg font-medium text-cancel">
-            {error}
-          </p>
-        )}
-      </div>
+      {savedNotice && <p className="text-lg font-medium text-confirm">{t.modules.saved}</p>}
+      {error && (
+        <p role="alert" className="text-lg font-medium text-cancel">
+          {error}
+        </p>
+      )}
     </div>
   )
 }

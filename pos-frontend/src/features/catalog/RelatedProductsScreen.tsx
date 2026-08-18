@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { AppHeader } from '@/components/app-header'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -7,7 +6,6 @@ import { Label } from '@/components/ui/label'
 import { apiErrorMessage } from '@/lib/api-client'
 import { formatCurrency } from '@/lib/format'
 import { searchProducts, updateProductRelatedProducts } from '@/services/api/catalogApi'
-import { useNavigation } from '@/App'
 import { t } from '@/i18n'
 import type { Product } from '@/types/api'
 
@@ -42,7 +40,6 @@ function useDebouncedProductSearch(query: string): Product[] {
  * el punto 8 construya la edición completa de producto, esto puede
  * integrarse ahí; mientras tanto ya cierra el punto 5 por sí sola. */
 export function RelatedProductsScreen() {
-  const { closeCatalog } = useNavigation()
   const [sourceQuery, setSourceQuery] = useState('')
   const sourceResults = useDebouncedProductSearch(sourceQuery)
   const [source, setSource] = useState<Product | null>(null)
@@ -87,21 +84,13 @@ export function RelatedProductsScreen() {
   }
 
   return (
-    <div className="flex min-h-svh flex-col bg-surface-muted">
-      <AppHeader />
+    <div className="flex flex-1 flex-col gap-6 p-6">
+      <div>
+        <h1 className="text-3xl font-bold text-ink">{t.relatedProducts.title}</h1>
+        <p className="mt-2 text-lg text-ink/70">{t.relatedProducts.subtitle}</p>
+      </div>
 
-      <div className="flex flex-1 flex-col gap-6 p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-ink">{t.relatedProducts.title}</h1>
-            <p className="mt-2 text-lg text-ink/70">{t.relatedProducts.subtitle}</p>
-          </div>
-          <Button type="button" variant="neutral" onClick={closeCatalog}>
-            {t.relatedProducts.back}
-          </Button>
-        </div>
-
-        <Card>
+      <Card>
           <Label htmlFor="source-search">{t.relatedProducts.chooseProduct}</Label>
           <Input
             id="source-search"
@@ -190,9 +179,8 @@ export function RelatedProductsScreen() {
                 {error}
               </p>
             )}
-          </Card>
-        )}
-      </div>
+        </Card>
+      )}
     </div>
   )
 }

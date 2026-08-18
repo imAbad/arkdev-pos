@@ -3,8 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
 import { render, screen } from '@testing-library/react'
 import { AuthContext, type AuthContextValue } from '@/features/auth/AuthProvider'
-import { NavigationContext } from '@/App'
-import { fakeAuthValue, fakeNavigationValue } from '@/test/test-utils'
+import { fakeAuthValue } from '@/test/test-utils'
 import { server } from '@/test/server'
 import { makeCompanySettings, makeProfile } from '@/test/fixtures'
 import { t } from '@/i18n'
@@ -12,7 +11,7 @@ import { ModuleSettingsScreen } from './ModuleSettingsScreen'
 
 const BASE = import.meta.env.VITE_API_BASE_URL
 
-function renderScreen(authOverrides: Partial<AuthContextValue> = {}, closeModules = vi.fn()) {
+function renderScreen(authOverrides: Partial<AuthContextValue> = {}) {
   const auth = fakeAuthValue({
     profile: makeProfile({ role: 'ADMINISTRADOR' }),
     companySettings: makeCompanySettings({ id: 7, enabled_modules: { cfdi: false, multiple_branches: false } }),
@@ -20,9 +19,7 @@ function renderScreen(authOverrides: Partial<AuthContextValue> = {}, closeModule
   })
   return render(
     <AuthContext.Provider value={auth}>
-      <NavigationContext.Provider value={fakeNavigationValue({ view: 'modules', closeModules })}>
-        <ModuleSettingsScreen />
-      </NavigationContext.Provider>
+      <ModuleSettingsScreen />
     </AuthContext.Provider>,
   )
 }
@@ -70,14 +67,5 @@ describe('ModuleSettingsScreen', () => {
     await user.click(screen.getByRole('switch', { name: t.modules.cfdiName }))
 
     expect(await screen.findByText('Esta acción requiere el rol de administrador.')).toBeInTheDocument()
-  })
-
-  it('"Volver a vender" llama a closeModules', async () => {
-    const closeModules = vi.fn()
-    const user = userEvent.setup()
-    renderScreen({}, closeModules)
-
-    await user.click(screen.getByRole('button', { name: t.modules.back }))
-    expect(closeModules).toHaveBeenCalledTimes(1)
   })
 })

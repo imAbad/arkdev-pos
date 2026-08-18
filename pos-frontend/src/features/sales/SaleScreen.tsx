@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { AppHeader } from '@/components/app-header'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -139,9 +138,7 @@ export function SaleScreen({ shift }: SaleScreenProps) {
   const total = cartTotal(cart)
 
   return (
-    <div className="flex min-h-svh flex-col bg-surface-muted">
-      <AppHeader />
-
+    <>
       <div className="flex flex-1 flex-col gap-6 p-6 lg:flex-row">
         <Card className="flex-1">
           <ProductSearch onSelect={addToCart} />
@@ -204,6 +201,6 @@ export function SaleScreen({ shift }: SaleScreenProps) {
         onConfirm={handleCancelSale}
         onOpenChange={setConfirmingCancel}
       />
-    </div>
+    </>
   )
 }

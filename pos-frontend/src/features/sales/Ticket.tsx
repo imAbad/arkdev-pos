@@ -55,7 +55,7 @@ export function Ticket({ sale: initialSale, businessName, changeGiven, onBack }:
   }
 
   return (
-    <div className="flex min-h-svh flex-col items-center bg-surface-muted p-6 print:bg-white print:p-0">
+    <div className="flex flex-1 flex-col items-center bg-surface-muted p-6 print:bg-white print:p-0">
       <div className="flex w-full max-w-sm justify-between gap-3 print:hidden">
         <Button type="button" variant="neutral" onClick={onBack}>
           {t.ticket.back}

@@ -14,7 +14,7 @@ interface SaleConfirmationProps {
  * es lo más importante que la persona necesita ver en todo el flujo. */
 export function SaleConfirmation({ sale, changeGiven, onNewSale, onViewTicket }: SaleConfirmationProps) {
   return (
-    <div className="flex min-h-svh flex-col items-center justify-center gap-8 bg-confirm p-6 text-center text-white">
+    <div className="flex flex-1 flex-col items-center justify-center gap-8 bg-confirm p-6 text-center text-white">
       <div className="flex h-28 w-28 items-center justify-center rounded-full bg-white/20 text-6xl">✓</div>
       <h1 className="text-5xl font-extrabold">{t.confirmation.title}</h1>
 

@@ -1,11 +1,9 @@
 import { useEffect, useState } from 'react'
-import { AppHeader } from '@/components/app-header'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { apiErrorMessage } from '@/lib/api-client'
-import { useNavigation } from '@/App'
 import {
   createUser,
   deactivateUser,
@@ -19,9 +17,9 @@ import type { Branch, Role, UserProfile } from '@/types/api'
 /** Punto 9 (el de mayor riesgo de la sesión): pantalla de gestión de
  * usuarios, ADMINISTRADOR exclusivo — el backend ya rechaza a cualquier
  * otro rol (core.permissions.IsAdministrator en UserProfileViewSet), acá
- * solo se refleja con app-header (link ADMIN-only, igual que Módulos). */
+ * solo se refleja con el link del sidebar (ADMIN-only, igual que
+ * Módulos). */
 export function UserManagementScreen() {
-  const { closeUsers } = useNavigation()
   const [users, setUsers] = useState<UserProfile[] | null>(null)
   const [branches, setBranches] = useState<Branch[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -71,32 +69,24 @@ export function UserManagementScreen() {
   }
 
   return (
-    <div className="flex min-h-svh flex-col bg-surface-muted">
-      <AppHeader />
+    <div className="flex flex-1 flex-col gap-6 p-6">
+      <div>
+        <h1 className="text-3xl font-bold text-ink">{t.users.title}</h1>
+        <p className="mt-2 text-lg text-ink/70">{t.users.subtitle}</p>
+      </div>
 
-      <div className="flex flex-1 flex-col gap-6 p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-ink">{t.users.title}</h1>
-            <p className="mt-2 text-lg text-ink/70">{t.users.subtitle}</p>
-          </div>
-          <Button type="button" variant="neutral" onClick={closeUsers}>
-            {t.users.back}
-          </Button>
-        </div>
+      <NewUserForm branches={branches} onCreated={load} />
 
-        <NewUserForm branches={branches} onCreated={load} />
-
-        {error && (
-          <p role="alert" className="text-lg font-medium text-cancel">
-            {error}
-          </p>
-        )}
-        {actionError && (
-          <p role="alert" className="text-lg font-medium text-cancel">
-            {actionError}
-          </p>
-        )}
+      {error && (
+        <p role="alert" className="text-lg font-medium text-cancel">
+          {error}
+        </p>
+      )}
+      {actionError && (
+        <p role="alert" className="text-lg font-medium text-cancel">
+          {actionError}
+        </p>
+      )}
 
         {!error && users === null && <p className="text-lg text-ink/70">{t.users.loading}</p>}
 
@@ -157,9 +147,8 @@ export function UserManagementScreen() {
                 ))}
               </tbody>
             </table>
-          </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   )
 }
