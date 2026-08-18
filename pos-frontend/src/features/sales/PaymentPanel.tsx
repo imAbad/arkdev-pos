@@ -53,7 +53,7 @@ export function PaymentPanel({
               type="button"
               onClick={() => onChangeMethod(value)}
               className={cn(
-                'h-16 rounded-2xl border-2 text-lg font-semibold transition-colors',
+                'flex h-16 items-center justify-center rounded-2xl border-2 text-lg font-semibold transition-colors',
                 method === value
                   ? 'border-accent bg-accent text-white'
                   : 'border-border bg-white text-ink hover:bg-surface-muted',
