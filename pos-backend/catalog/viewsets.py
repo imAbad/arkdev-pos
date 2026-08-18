@@ -1,4 +1,4 @@
-from rest_framework import viewsets
+from rest_framework import filters, viewsets
 from rest_framework.permissions import IsAuthenticated
 
 from catalog.models import Batch, Category, Product, Supplier
@@ -22,6 +22,11 @@ class ProductViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
     queryset = Product.objects.all()
     serializer_class = ProductSerializer
     permission_classes = [IsAuthenticated]
+    # ?search= por nombre/sku/barcode — lo primero que necesita cualquier
+    # pantalla de venta real (buscar producto), agregado al leer el
+    # endpoint desde la perspectiva del frontend (punto 7).
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['name', 'sku', 'barcode']
 
 
 class BatchViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):

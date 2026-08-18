@@ -22,6 +22,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
+    'corsheaders',
     'core',
     'tenants',
     'audit',
@@ -32,6 +33,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -130,3 +132,21 @@ SIMPLE_JWT = {
 # can_authorize_exceptions, punto 6 del orden de construcción) — corto a
 # propósito: es para autorizar una acción puntual, no una sesión.
 SUPERVISOR_AUTHORIZATION_TTL_MINUTES = config('SUPERVISOR_AUTHORIZATION_TTL_MINUTES', default=5, cast=int)
+
+# El frontend (Vite) corre en otro puerto durante desarrollo — sin esto el
+# navegador bloquea las llamadas a la API por CORS. Puertos default de
+# `vite dev` (5173) y `vite preview` (4173) habilitados de fábrica, más
+# 5174/5175 (Vite cae ahí si 5173 ya está ocupado por otro proyecto en la
+# misma máquina — pasó en desarrollo). En producción el frontend se sirve
+# desde Azure Static Web App, se agrega ese origin real vía
+# CORS_ALLOWED_ORIGINS cuando exista.
+CORS_ALLOWED_ORIGINS = config(
+    'CORS_ALLOWED_ORIGINS',
+    default=(
+        'http://localhost:5173,http://127.0.0.1:5173,'
+        'http://localhost:5174,http://127.0.0.1:5174,'
+        'http://localhost:5175,http://127.0.0.1:5175,'
+        'http://localhost:4173,http://127.0.0.1:4173'
+    ),
+    cast=Csv(),
+)

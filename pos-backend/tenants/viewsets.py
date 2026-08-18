@@ -1,4 +1,5 @@
 from rest_framework import status, viewsets
+from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -32,6 +33,19 @@ class UserProfileViewSet(TenantScopedViewSetMixin, viewsets.ReadOnlyModelViewSet
 
     queryset = UserProfile.objects.all()
     serializer_class = UserProfileSerializer
+
+    @action(detail=False, methods=['get'])
+    def me(self, request):
+        # El frontend necesita saber quién es (branch, role, capabilities)
+        # justo después de login, sin tener que adivinar cuál fila del
+        # listado (todo el tenant) le corresponde.
+        profile = getattr(request.user, 'profile', None)
+        if profile is None:
+            return Response(
+                {'detail': 'Tu usuario no tiene un perfil de tenant asociado.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response(self.get_serializer(profile).data)
 
 
 class RequestSupervisorAuthorizationView(APIView):

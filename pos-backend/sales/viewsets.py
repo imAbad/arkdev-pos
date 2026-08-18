@@ -36,6 +36,16 @@ class CashShiftViewSet(TenantScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
     serializer_class = CashShiftSerializer
     permission_classes = [IsAuthenticated, HandlesCash]
 
+    @action(detail=False, methods=['get'])
+    def current(self, request):
+        # El frontend necesita saber, al entrar, si el cajero ya tiene un
+        # turno abierto (ej. recargó la página) para saltarse la pantalla
+        # de apertura en vez de chocar con "ya tienes un turno abierto".
+        shift = self.get_queryset().filter(user=request.user, status=CashShift.Status.OPEN).first()
+        if shift is None:
+            return Response({'detail': 'No tienes un turno abierto.'}, status=status.HTTP_404_NOT_FOUND)
+        return Response(self.get_serializer(shift).data)
+
     @action(detail=False, methods=['post'], url_path='open-shift')
     def open_shift(self, request):
         input_serializer = OpenShiftInputSerializer(data=request.data)
