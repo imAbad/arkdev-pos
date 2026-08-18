@@ -5,7 +5,7 @@ import { screen } from '@testing-library/react'
 import { render } from '@testing-library/react'
 import { AuthContext } from '@/features/auth/AuthProvider'
 import { NavigationContext } from '@/App'
-import { fakeAuthValue } from '@/test/test-utils'
+import { fakeAuthValue, fakeNavigationValue } from '@/test/test-utils'
 import { server } from '@/test/server'
 import { makeBranch, makeProfile } from '@/test/fixtures'
 import { t } from '@/i18n'
@@ -21,7 +21,7 @@ function renderReportsScreen(closeReports = vi.fn()) {
   const auth = fakeAuthValue({ profile: makeProfile({ role: 'ADMINISTRADOR' }) })
   return render(
     <AuthContext.Provider value={auth}>
-      <NavigationContext.Provider value={{ view: 'reports', openReports: vi.fn(), closeReports, openModules: vi.fn(), closeModules: vi.fn() }}>
+      <NavigationContext.Provider value={fakeNavigationValue({ view: 'reports', closeReports })}>
         <ReportsScreen />
       </NavigationContext.Provider>
     </AuthContext.Provider>,

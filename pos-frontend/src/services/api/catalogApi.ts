@@ -8,3 +8,13 @@ export async function searchProducts(query: string): Promise<Product[]> {
   })
   return response.data.results
 }
+
+export async function getProduct(id: number): Promise<Product> {
+  const response = await apiClient.get<Product>(`/products/${id}/`)
+  return response.data
+}
+
+export async function updateProductRelatedProducts(id: number, relatedProductIds: number[]): Promise<Product> {
+  const response = await apiClient.patch<Product>(`/products/${id}/`, { related_products: relatedProductIds })
+  return response.data
+}

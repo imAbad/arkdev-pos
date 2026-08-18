@@ -8,10 +8,11 @@ import { t } from '@/i18n'
  * identidad/navegación, nunca para botones de acción (ver index.css). */
 export function AppHeader() {
   const { companySettings, branch, profile, logout } = useAuth()
-  const { view, openReports, openModules } = useNavigation()
+  const { view, openReports, openModules, openCatalog } = useNavigation()
   const businessName = companySettings?.business_name?.trim() || t.common.appName
   const showReportsLink = view === 'main' && isAdministratorOrSupervisor(profile)
   const showModulesLink = view === 'main' && isAdministrator(profile)
+  const showCatalogLink = view === 'main' && isAdministrator(profile)
 
   return (
     <header className="flex items-center justify-between gap-4 bg-accent px-6 py-4 text-white">
@@ -33,6 +34,11 @@ export function AppHeader() {
         {showModulesLink && (
           <Button variant="neutral" size="compact" onClick={openModules}>
             {t.modules.navLink}
+          </Button>
+        )}
+        {showCatalogLink && (
+          <Button variant="neutral" size="compact" onClick={openCatalog}>
+            {t.relatedProducts.navLink}
           </Button>
         )}
         <Button variant="neutral" size="compact" onClick={logout}>

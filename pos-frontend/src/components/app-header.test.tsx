@@ -1,8 +1,8 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { AuthContext } from '@/features/auth/AuthProvider'
 import { NavigationContext } from '@/App'
-import { fakeAuthValue } from '@/test/test-utils'
+import { fakeAuthValue, fakeNavigationValue } from '@/test/test-utils'
 import { makeProfile } from '@/test/fixtures'
 import { t } from '@/i18n'
 import { AppHeader } from './app-header'
@@ -11,7 +11,7 @@ function renderHeader(profile: ReturnType<typeof makeProfile>) {
   const auth = fakeAuthValue({ profile })
   return render(
     <AuthContext.Provider value={auth}>
-      <NavigationContext.Provider value={{ view: 'main', openReports: vi.fn(), closeReports: vi.fn(), openModules: vi.fn(), closeModules: vi.fn() }}>
+      <NavigationContext.Provider value={fakeNavigationValue()}>
         <AppHeader />
       </NavigationContext.Provider>
     </AuthContext.Provider>,
@@ -32,5 +32,17 @@ describe('AppHeader — link de Reportes (punto 2: mismo acceso para Supervisor 
   it('NO lo muestra a un CAJERO plano', () => {
     renderHeader(makeProfile({ role: 'CAJERO', capabilities: { handles_cash: true } }))
     expect(screen.queryByRole('button', { name: t.reports.navLink })).not.toBeInTheDocument()
+  })
+})
+
+describe('AppHeader — link de Relacionados (punto 5, exclusivo de ADMINISTRADOR)', () => {
+  it('lo muestra a un ADMINISTRADOR', () => {
+    renderHeader(makeProfile({ role: 'ADMINISTRADOR' }))
+    expect(screen.getByRole('button', { name: t.relatedProducts.navLink })).toBeInTheDocument()
+  })
+
+  it('NO lo muestra a un Supervisor (CAJERO con can_authorize_exceptions)', () => {
+    renderHeader(makeProfile({ role: 'CAJERO', capabilities: { can_authorize_exceptions: true } }))
+    expect(screen.queryByRole('button', { name: t.relatedProducts.navLink })).not.toBeInTheDocument()
   })
 })

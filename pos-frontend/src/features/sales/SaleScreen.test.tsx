@@ -259,4 +259,50 @@ describe('SaleScreen', () => {
     await user.click(screen.getByRole('button', { name: /Yogurt natural 1L/ }))
     await waitFor(() => expect(screen.getAllByText(t.sale.nearExpiryBadge)).toHaveLength(1))
   })
+
+  it('punto 5: al agregar un producto con relacionados configurados, sugiere agregarlos con un toque', async () => {
+    const PAN = makeProduct({ id: 4, name: 'Pan de caja', sku: 'PAN-1', sale_price: '32.00' })
+    const MANTEQUILLA = makeProduct({
+      id: 5, name: 'Mantequilla', sku: 'MANT-1', sale_price: '45.00',
+      related_products_detail: [{ id: 4, name: 'Pan de caja', sale_price: '32.00' }],
+    })
+    PAN.related_products_detail.push({ id: 5, name: 'Mantequilla', sale_price: '45.00' })
+    mockSearch({ pan: [PAN] })
+    server.use(
+      http.get(`${BASE}/products/5/`, () => HttpResponse.json(MANTEQUILLA)),
+    )
+
+    const user = userEvent.setup()
+    renderWithAuth(<SaleScreen shift={makeShift()} />)
+
+    await addProductToCart(user, 'pan', 'Pan de caja')
+
+    expect(await screen.findByText(t.sale.crossSellTitle)).toBeInTheDocument()
+    expect(screen.getByText('Mantequilla')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: t.sale.crossSellAdd }))
+
+    await waitFor(() => expect(screen.getAllByText('Mantequilla').length).toBeGreaterThan(0))
+    // La sugerencia desaparece porque Mantequilla ya está en el carrito:
+    expect(screen.queryByText(t.sale.crossSellTitle)).not.toBeInTheDocument()
+  })
+
+  it('punto 5: "Cerrar sugerencia" la descarta sin agregar nada al carrito', async () => {
+    const PAN = makeProduct({
+      id: 4, name: 'Pan de caja', sku: 'PAN-1', sale_price: '32.00',
+      related_products_detail: [{ id: 5, name: 'Mantequilla', sale_price: '45.00' }],
+    })
+    mockSearch({ pan: [PAN] })
+
+    const user = userEvent.setup()
+    renderWithAuth(<SaleScreen shift={makeShift()} />)
+
+    await addProductToCart(user, 'pan', 'Pan de caja')
+    await screen.findByText(t.sale.crossSellTitle)
+
+    await user.click(screen.getByRole('button', { name: t.sale.crossSellDismiss }))
+
+    expect(screen.queryByText(t.sale.crossSellTitle)).not.toBeInTheDocument()
+    expect(screen.queryByText('Mantequilla')).not.toBeInTheDocument()
+  })
 })

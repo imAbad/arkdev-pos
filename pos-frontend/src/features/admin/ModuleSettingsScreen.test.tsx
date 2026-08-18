@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { render, screen } from '@testing-library/react'
 import { AuthContext, type AuthContextValue } from '@/features/auth/AuthProvider'
 import { NavigationContext } from '@/App'
-import { fakeAuthValue } from '@/test/test-utils'
+import { fakeAuthValue, fakeNavigationValue } from '@/test/test-utils'
 import { server } from '@/test/server'
 import { makeCompanySettings, makeProfile } from '@/test/fixtures'
 import { t } from '@/i18n'
@@ -20,7 +20,7 @@ function renderScreen(authOverrides: Partial<AuthContextValue> = {}, closeModule
   })
   return render(
     <AuthContext.Provider value={auth}>
-      <NavigationContext.Provider value={{ view: 'modules', openReports: vi.fn(), closeReports: vi.fn(), openModules: vi.fn(), closeModules }}>
+      <NavigationContext.Provider value={fakeNavigationValue({ view: 'modules', closeModules })}>
         <ModuleSettingsScreen />
       </NavigationContext.Provider>
     </AuthContext.Provider>,

@@ -117,6 +117,8 @@ export function makeProduct(overrides: Partial<Product> = {}): Product {
     min_stock: 0,
     image: null,
     nearest_batch_expiration: null,
+    related_products: [],
+    related_products_detail: [],
     company: 1,
     ...overrides,
   }

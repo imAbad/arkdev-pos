@@ -102,6 +102,9 @@ export const es = {
     errorGeneric: 'No se pudo registrar la venta. Intenta de nuevo.',
     errorNoItems: 'Agrega al menos un producto antes de cobrar.',
     nearExpiryBadge: 'Caduca pronto',
+    crossSellTitle: 'Clientes que compran esto también llevan:',
+    crossSellAdd: 'Agregar',
+    crossSellDismiss: 'Cerrar sugerencia',
   },
   confirmation: {
     title: '¡Venta registrada!',
@@ -182,6 +185,19 @@ export const es = {
     cfdiDescription: 'Permite generar facturas electrónicas válidas ante el SAT. Todavía no disponible en este plan — el interruptor queda listo para cuando se active como complemento.',
     multipleBranchesName: 'Múltiples sucursales',
     multipleBranchesDescription: 'Permite operar más de una sucursal bajo la misma cuenta, cada una con su propia caja e inventario.',
+  },
+  relatedProducts: {
+    navLink: 'Relacionados',
+    title: 'Productos relacionados',
+    subtitle: 'Configura qué productos sugerir al cajero cuando alguien agrega este producto a una venta (ej. "Pan" sugiere "Mantequilla").',
+    back: 'Volver a vender',
+    chooseProduct: 'Elige un producto',
+    currentlyRelated: 'Relacionados actuales',
+    noneYet: 'Todavía no tiene productos relacionados.',
+    addRelated: 'Agregar un producto relacionado',
+    add: 'Agregar',
+    remove: 'Quitar',
+    errorGeneric: 'No se pudo guardar el cambio. Intenta de nuevo.',
   },
 } as const
 

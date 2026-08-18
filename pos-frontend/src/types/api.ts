@@ -75,6 +75,12 @@ export interface CashShift {
 
 export type UnitType = 'PIEZA' | 'KG' | 'GRAMO' | 'LITRO' | 'PAQUETE' | 'SERVICIO'
 
+export interface RelatedProductSummary {
+  id: number
+  name: string
+  sale_price: string
+}
+
 export interface Product {
   id: number
   name: string
@@ -91,6 +97,8 @@ export interface Product {
   min_stock: number
   image: string | null
   nearest_batch_expiration: string | null
+  related_products: number[]
+  related_products_detail: RelatedProductSummary[]
   company: number
 }
 

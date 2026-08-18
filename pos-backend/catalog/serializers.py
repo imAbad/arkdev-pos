@@ -19,9 +19,20 @@ class SupplierSerializer(serializers.ModelSerializer):
         read_only_fields = ['company']
 
 
+class RelatedProductSummarySerializer(serializers.ModelSerializer):
+    """Solo lo que la sugerencia de cross-sell en la pantalla de venta
+    necesita mostrar — no el Product completo (evita anidar costo/margen,
+    dato que un cajero no necesita ver ahí)."""
+
+    class Meta:
+        model = Product
+        fields = ['id', 'name', 'sale_price']
+
+
 class ProductSerializer(TenantScopedFieldsMixin, serializers.ModelSerializer):
     tenant_scoped_fields = ('category', 'supplier')
     nearest_batch_expiration = serializers.SerializerMethodField()
+    related_products_detail = RelatedProductSummarySerializer(source='related_products', many=True, read_only=True)
 
     class Meta:
         model = Product
@@ -29,9 +40,24 @@ class ProductSerializer(TenantScopedFieldsMixin, serializers.ModelSerializer):
             'id', 'name', 'sku', 'barcode', 'category', 'supplier',
             'unit_type', 'requires_batch', 'variant_attributes',
             'cost_price', 'sale_price', 'tax_rate', 'min_stock', 'image',
-            'nearest_batch_expiration', 'company', 'created_at', 'updated_at',
+            'nearest_batch_expiration', 'related_products', 'related_products_detail',
+            'company', 'created_at', 'updated_at',
         ]
         read_only_fields = ['company', 'created_at', 'updated_at']
+
+    def validate_related_products(self, products):
+        # TenantScopedFieldsMixin no acota M2M (solo FK simples vía
+        # PrimaryKeyRelatedField.queryset) — se valida aquí explícito,
+        # mismo motivo que cualquier otro campo cruzado a otro tenant.
+        request = self.context.get('request')
+        if request is not None:
+            allowed_ids = set(Product.objects.for_user(request.user).values_list('id', flat=True))
+            for product in products:
+                if product.id not in allowed_ids:
+                    raise serializers.ValidationError('No puedes relacionar un producto de otro tenant.')
+        if self.instance is not None and any(product.id == self.instance.id for product in products):
+            raise serializers.ValidationError('Un producto no puede relacionarse consigo mismo.')
+        return products
 
     def get_nearest_batch_expiration(self, product):
         # Punto 4: aviso de caducidad próxima visible en el buscador/

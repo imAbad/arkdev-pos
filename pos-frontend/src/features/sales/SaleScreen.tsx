@@ -5,16 +5,18 @@ import { Card } from '@/components/ui/card'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { apiErrorMessage } from '@/lib/api-client'
 import { createSale } from '@/services/api/salesApi'
+import { getProduct } from '@/services/api/catalogApi'
 import { t } from '@/i18n'
 import { useAuth } from '@/features/auth/AuthProvider'
 import { ProductSearch } from '@/features/sales/ProductSearch'
 import { CartView } from '@/features/sales/CartView'
+import { CrossSellSuggestion } from '@/features/sales/CrossSellSuggestion'
 import { PaymentPanel } from '@/features/sales/PaymentPanel'
 import { SaleConfirmation } from '@/features/sales/SaleConfirmation'
 import { Ticket } from '@/features/sales/Ticket'
 import { CloseShiftScreen } from '@/features/shift/CloseShiftScreen'
 import { cartTotal, type CartLine } from '@/features/sales/cart'
-import type { CashShift, PaymentMethod, Product, Sale } from '@/types/api'
+import type { CashShift, PaymentMethod, Product, RelatedProductSummary, Sale } from '@/types/api'
 
 interface SaleScreenProps {
   shift: CashShift
@@ -32,17 +34,27 @@ export function SaleScreen({ shift }: SaleScreenProps) {
   const [completed, setCompleted] = useState<{ sale: Sale; changeGiven: number } | null>(null)
   const [viewingTicket, setViewingTicket] = useState(false)
   const [closingShift, setClosingShift] = useState(false)
+  const [crossSellItems, setCrossSellItems] = useState<RelatedProductSummary[]>([])
 
   function addToCart(product: Product) {
     setCart((current) => {
       const existing = current.find((line) => line.product.id === product.id)
-      if (existing) {
-        return current.map((line) =>
-          line.product.id === product.id ? { ...line, quantity: line.quantity + 1 } : line,
-        )
-      }
-      return [...current, { product, quantity: 1 }]
+      const next = existing
+        ? current.map((line) => (line.product.id === product.id ? { ...line, quantity: line.quantity + 1 } : line))
+        : [...current, { product, quantity: 1 }]
+
+      const suggestions = product.related_products_detail.filter(
+        (related) => !next.some((line) => line.product.id === related.id),
+      )
+      setCrossSellItems(suggestions)
+
+      return next
     })
+  }
+
+  async function addSuggestionToCart(productId: number) {
+    const product = await getProduct(productId)
+    addToCart(product)
   }
 
   function changeQuantity(productId: number, quantity: number) {
@@ -61,10 +73,12 @@ export function SaleScreen({ shift }: SaleScreenProps) {
     setError(null)
     setCompleted(null)
     setViewingTicket(false)
+    setCrossSellItems([])
   }
 
   function handleCancelSale() {
     setCart([])
+    setCrossSellItems([])
     setError(null)
   }
 
@@ -131,6 +145,11 @@ export function SaleScreen({ shift }: SaleScreenProps) {
       <div className="flex flex-1 flex-col gap-6 p-6 lg:flex-row">
         <Card className="flex-1">
           <ProductSearch onSelect={addToCart} />
+          <CrossSellSuggestion
+            items={crossSellItems}
+            onAdd={(id) => void addSuggestionToCart(id)}
+            onDismiss={() => setCrossSellItems([])}
+          />
           <div className="mt-8">
             <p className="text-lg font-medium text-ink mb-3">{t.sale.cart}</p>
             <CartView lines={cart} onChangeQuantity={changeQuantity} onRemove={removeFromCart} />

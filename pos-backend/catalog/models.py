@@ -100,6 +100,17 @@ class Product(BaseTenantModel):
     # §4.3). Storage local en dev; Azure Blob en producción vía settings.
     image = models.ImageField(upload_to=product_image_upload_path, null=True, blank=True)
 
+    # Cross-sell simple (punto 5 de la sesión) — configurado a mano por el
+    # administrador desde catálogo, no automático ni basado en historial de
+    # compra (sobre-ingeniería para este tamaño de negocio, decisión
+    # explícita). Simétrico a propósito: en retail chico "A sugiere B"
+    # casi siempre implica "B sugiere A" (pan-mantequilla funciona en
+    # ambos sentidos), y una relación simétrica evita mantener dos listas
+    # independientes por par de productos para el caso común. Si algún día
+    # se necesita una sugerencia direccional real, es un cambio deliberado
+    # (symmetrical=False + related_name), no el default de hoy.
+    related_products = models.ManyToManyField('self', blank=True)
+
     class Meta(BaseTenantModel.Meta):
         constraints = [
             models.UniqueConstraint(fields=['company', 'sku'], name='product_unique_company_sku'),

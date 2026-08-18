@@ -5,6 +5,7 @@ import { OpenShiftScreen } from '@/features/shift/OpenShiftScreen'
 import { SaleScreen } from '@/features/sales/SaleScreen'
 import { ReportsScreen } from '@/features/reports/ReportsScreen'
 import { ModuleSettingsScreen } from '@/features/admin/ModuleSettingsScreen'
+import { RelatedProductsScreen } from '@/features/catalog/RelatedProductsScreen'
 import { getCurrentShift } from '@/services/api/salesApi'
 import { t } from '@/i18n'
 import type { CashShift } from '@/types/api'
@@ -17,7 +18,7 @@ import type { CashShift } from '@/types/api'
 // tienda — puntos 3/8/9/12) siguen el mismo patrón por ahora. El punto 13
 // de esta sesión reemplaza esto por un router real con sidebar — no antes,
 // para no reescribir esto cinco veces mientras las pantallas se construyen.
-export type ViewKey = 'main' | 'reports' | 'modules'
+export type ViewKey = 'main' | 'reports' | 'modules' | 'catalog'
 
 export interface NavigationContextValue {
   view: ViewKey
@@ -25,6 +26,8 @@ export interface NavigationContextValue {
   closeReports: () => void
   openModules: () => void
   closeModules: () => void
+  openCatalog: () => void
+  closeCatalog: () => void
 }
 
 // Sin valor por default null-y-throw (a diferencia de useAuth): AppHeader
@@ -40,6 +43,8 @@ export const NavigationContext = createContext<NavigationContextValue>({
   closeReports: () => {},
   openModules: () => {},
   closeModules: () => {},
+  openCatalog: () => {},
+  closeCatalog: () => {},
 })
 
 export function useNavigation(): NavigationContextValue {
@@ -63,6 +68,8 @@ function AppScreens() {
     closeReports: () => setView('main'),
     openModules: () => setView('modules'),
     closeModules: () => setView('main'),
+    openCatalog: () => setView('catalog'),
+    closeCatalog: () => setView('main'),
   }
 
   return <NavigationContext.Provider value={navigationValue}>{renderScreen()}</NavigationContext.Provider>
@@ -82,6 +89,10 @@ function AppScreens() {
 
     if (view === 'modules') {
       return <ModuleSettingsScreen />
+    }
+
+    if (view === 'catalog') {
+      return <RelatedProductsScreen />
     }
 
     if (shift === 'loading') {

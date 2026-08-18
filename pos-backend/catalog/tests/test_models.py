@@ -80,6 +80,40 @@ class ProductModelTests(TestCase):
         self.assertEqual(product.variant_attributes, {'color': 'rojo', 'talla': 'M'})
 
 
+class RelatedProductsSymmetricTests(TestCase):
+    """Punto 5: cross-sell simple — relación elegida simétrica a propósito
+    (ver docstring de Product.related_products). Esto se prueba a nivel de
+    modelo porque es comportamiento de Django (ManyToManyField('self') sin
+    symmetrical=False), no lógica propia — vale la pena fijarlo con un
+    test explícito para que nadie lo cambie sin darse cuenta."""
+
+    def setUp(self):
+        self.company = create_company('Abarrotes Don Chuy')
+
+    def test_adding_a_relation_is_visible_from_both_sides(self):
+        pan = create_product(self.company, name='Pan de caja', sku='PAN-1')
+        mantequilla = create_product(self.company, name='Mantequilla', sku='MANT-1')
+
+        pan.related_products.add(mantequilla)
+
+        self.assertIn(mantequilla, pan.related_products.all())
+        self.assertIn(pan, mantequilla.related_products.all())
+
+    def test_removing_a_relation_removes_it_from_both_sides(self):
+        pan = create_product(self.company, name='Pan de caja', sku='PAN-2')
+        mantequilla = create_product(self.company, name='Mantequilla', sku='MANT-2')
+        pan.related_products.add(mantequilla)
+
+        pan.related_products.remove(mantequilla)
+
+        self.assertNotIn(mantequilla, pan.related_products.all())
+        self.assertNotIn(pan, mantequilla.related_products.all())
+
+    def test_a_product_with_no_related_products_returns_empty(self):
+        solo = create_product(self.company, name='Producto solitario', sku='SOLO-1')
+        self.assertEqual(list(solo.related_products.all()), [])
+
+
 class RequiresBatchIndependenceTests(TestCase):
     """El pedido explícito: requires_batch=False no debe romper nada aunque
     Batch exista como modelo en el sistema — y tampoco hay ninguna

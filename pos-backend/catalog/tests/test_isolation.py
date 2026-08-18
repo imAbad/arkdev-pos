@@ -10,7 +10,8 @@ from rest_framework.test import APITestCase
 
 from catalog.models import Batch, Category, Product
 from catalog.tests.factories import create_batch, create_category, create_product, create_supplier
-from tenants.tests.factories import create_full_tenant
+from tenants.models import UserProfile
+from tenants.tests.factories import create_full_tenant, create_user_with_profile
 
 
 class CatalogManagerIsolationTests(TestCase):
@@ -43,8 +44,12 @@ class CatalogManagerIsolationTests(TestCase):
 
 class CatalogApiIsolationTests(APITestCase):
     def setUp(self):
-        self.tenant_a = create_full_tenant('Abarrotes Don Chuy', 'Centro', 'admin@donchuy.test')
-        self.tenant_b = create_full_tenant('Papelería La Estrella', 'Norte', 'admin@estrella.test')
+        self.tenant_a = create_full_tenant(
+            'Abarrotes Don Chuy', 'Centro', 'admin@donchuy.test', role=UserProfile.Role.ADMINISTRADOR,
+        )
+        self.tenant_b = create_full_tenant(
+            'Papelería La Estrella', 'Norte', 'admin@estrella.test', role=UserProfile.Role.ADMINISTRADOR,
+        )
         self.category_a = create_category(self.tenant_a['company'])
         self.category_b = create_category(self.tenant_b['company'])
         self.supplier_a = create_supplier(self.tenant_a['company'])
@@ -93,6 +98,26 @@ class CatalogApiIsolationTests(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data['company'], self.tenant_a['company'].id)
+
+    def test_plain_cajero_can_read_products_but_not_create_one(self):
+        # Punto 5/8: catálogo (producto, precio, relacionados) es exclusivo
+        # de ADMINISTRADOR — un CAJERO sigue pudiendo leer (el buscador de
+        # venta lo necesita) pero no crear/editar.
+        cajero, _ = create_user_with_profile(
+            'cajero@donchuy.test', self.tenant_a['branch'], capabilities={'handles_cash': True},
+        )
+        self._auth(cajero)
+
+        get_response = self.client.get('/api/v1/products/')
+        self.assertEqual(get_response.status_code, status.HTTP_200_OK)
+
+        post_response = self.client.post(
+            '/api/v1/products/',
+            {'name': 'Intento no autorizado', 'sku': 'NO-AUTH', 'category': self.category_a.id, 'cost_price': '1.00', 'sale_price': '2.00'},
+            format='json',
+        )
+        self.assertEqual(post_response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertFalse(Product.objects.filter(sku='NO-AUTH').exists())
 
     def test_cannot_create_batch_pointing_to_other_tenant_product(self):
         self._auth(self.tenant_a['user'])
@@ -155,6 +180,59 @@ class ProductSearchApiTests(APITestCase):
         response = self.client.get('/api/v1/products/?search=leche')
         ids = [row['id'] for row in response.data['results']]
         self.assertEqual(ids, [self.leche.id])
+
+
+class RelatedProductsApiTests(APITestCase):
+    def setUp(self):
+        self.tenant_a = create_full_tenant(
+            'Abarrotes Don Chuy', 'Centro', 'admin@donchuy.test', role=UserProfile.Role.ADMINISTRADOR,
+        )
+        self.tenant_b = create_full_tenant(
+            'Papelería La Estrella', 'Norte', 'admin@estrella.test', role=UserProfile.Role.ADMINISTRADOR,
+        )
+        self.pan = create_product(self.tenant_a['company'], name='Pan de caja', sku='PAN-API')
+        self.mantequilla = create_product(self.tenant_a['company'], name='Mantequilla', sku='MANT-API')
+        self.producto_ajeno = create_product(self.tenant_b['company'], name='Ajeno', sku='AJENO-API')
+
+    def _auth(self, user):
+        self.client.force_authenticate(user=user)
+
+    def test_admin_can_set_related_products_via_patch(self):
+        self._auth(self.tenant_a['user'])
+        response = self.client.patch(
+            f'/api/v1/products/{self.pan.id}/', {'related_products': [self.mantequilla.id]}, format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual([p['id'] for p in response.data['related_products_detail']], [self.mantequilla.id])
+
+        # Simétrico: se ve también del otro lado sin tocarlo directo.
+        self.mantequilla.refresh_from_db()
+        self.assertIn(self.pan, self.mantequilla.related_products.all())
+
+    def test_cannot_relate_a_product_from_another_tenant(self):
+        self._auth(self.tenant_a['user'])
+        response = self.client.patch(
+            f'/api/v1/products/{self.pan.id}/', {'related_products': [self.producto_ajeno.id]}, format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(list(self.pan.related_products.all()), [])
+
+    def test_cannot_relate_a_product_to_itself(self):
+        self._auth(self.tenant_a['user'])
+        response = self.client.patch(
+            f'/api/v1/products/{self.pan.id}/', {'related_products': [self.pan.id]}, format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_plain_cajero_cannot_set_related_products(self):
+        cajero, _ = create_user_with_profile(
+            'cajero@donchuy.test', self.tenant_a['branch'], capabilities={'handles_cash': True},
+        )
+        self._auth(cajero)
+        response = self.client.patch(
+            f'/api/v1/products/{self.pan.id}/', {'related_products': [self.mantequilla.id]}, format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
 
 class ProductNearestBatchExpirationTests(APITestCase):
