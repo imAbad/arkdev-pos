@@ -121,6 +121,7 @@ class SaleViewSet(TenantScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
         try:
             sale = create_sale_service(
                 cash_shift=data['cash_shift'],
+                client=data.get('client'),
                 details=resolved_details,
                 payments=data['payments'],
                 occurred_at=data.get('occurred_at'),

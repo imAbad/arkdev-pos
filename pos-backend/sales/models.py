@@ -108,11 +108,11 @@ class Sale(BaseTenantModel):
     modelos con parent scoping en este proyecto, para poder reportar por
     sucursal/caja sin tener que atravesar el join hasta el turno.
 
-    `client` (FK a customers.Client, para fiado) queda pendiente a
-    propósito: esa app todavía no existe (punto 5 del orden de
-    construcción, después de este). Payment.method=CREDIT ya existe como
-    choice, pero su contabilidad (cargar a CreditAccount) se conecta cuando
-    exista `customers` — no antes.
+    `client` (FK a customers.Client, para fiado) se agrega en el punto 5 del
+    orden de construcción, junto con `customers` — nullable porque la
+    mayoría de las ventas no son a crédito. Un Payment con method=CREDIT
+    exige `client` (ver sales.services.create_sale); su contabilidad la
+    resuelve customers.services.charge_credit.
     """
 
     class Status(models.TextChoices):
@@ -123,6 +123,9 @@ class Sale(BaseTenantModel):
     branch = models.ForeignKey('tenants.Branch', on_delete=models.PROTECT, related_name='sales')
     cash_register = models.ForeignKey(CashRegister, on_delete=models.PROTECT, related_name='sales')
     cash_shift = models.ForeignKey(CashShift, on_delete=models.PROTECT, related_name='sales')
+    client = models.ForeignKey(
+        'customers.Client', on_delete=models.PROTECT, related_name='sales', null=True, blank=True,
+    )
 
     # Idempotencia para offline: lo genera el cliente (POS offline), no el
     # servidor — por eso sin default a nivel de modelo (sales.services.

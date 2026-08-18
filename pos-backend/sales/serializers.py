@@ -3,6 +3,7 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from core.serializers import TenantScopedFieldsMixin
+from customers.models import Client
 from sales.models import CashRegister, CashShift, Payment, Sale, SaleDetail
 
 
@@ -66,11 +67,13 @@ class PaymentSerializer(serializers.ModelSerializer):
 class SaleSerializer(serializers.ModelSerializer):
     details = SaleDetailSerializer(many=True, read_only=True)
     payments = PaymentSerializer(many=True, read_only=True)
+    client_name = serializers.CharField(source='client.name', read_only=True, default=None)
 
     class Meta:
         model = Sale
         fields = [
-            'id', 'branch', 'cash_register', 'cash_shift', 'client_uuid', 'occurred_at',
+            'id', 'branch', 'cash_register', 'cash_shift', 'client', 'client_name',
+            'client_uuid', 'occurred_at',
             'subtotal', 'discount_amount', 'tax_amount', 'total', 'status',
             'details', 'payments', 'company', 'created_at',
         ]
@@ -99,13 +102,14 @@ class PaymentInputSerializer(serializers.Serializer):
 
 
 class SaleCreateSerializer(TenantScopedFieldsMixin, serializers.Serializer):
-    # A diferencia de SaleLineInputSerializer, `cash_shift` SÍ puede usar el
-    # mixin: SaleCreateSerializer se instancia una vez por request en la
-    # vista (con context={'request': request}), así que su __init__ ve el
-    # request real a tiempo de acotar el queryset.
-    tenant_scoped_fields = ('cash_shift',)
+    # A diferencia de SaleLineInputSerializer, `cash_shift`/`client` SÍ
+    # pueden usar el mixin: SaleCreateSerializer se instancia una vez por
+    # request en la vista (con context={'request': request}), así que su
+    # __init__ ve el request real a tiempo de acotar el queryset.
+    tenant_scoped_fields = ('cash_shift', 'client')
 
     cash_shift = serializers.PrimaryKeyRelatedField(queryset=CashShift.objects.all())
+    client = serializers.PrimaryKeyRelatedField(queryset=Client.objects.all(), required=False, allow_null=True)
     occurred_at = serializers.DateTimeField(required=False)
     discount_amount = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, default=Decimal('0'))
     client_uuid = serializers.UUIDField(required=False)

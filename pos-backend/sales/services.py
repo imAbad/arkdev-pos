@@ -7,6 +7,7 @@ from django.utils import timezone
 
 from audit.services import log_action
 from catalog.services import InsufficientStockError, decrement_batch_stock
+from customers.services import CreditError, charge_credit
 from sales.models import CashShift, Payment, Sale, SaleDetail
 
 
@@ -107,7 +108,10 @@ def close_shift(*, shift, closing_user, actual_closing_balance, actual_voucher_t
     return shift
 
 
-def create_sale(*, cash_shift, details, payments, occurred_at=None, discount_amount=Decimal('0'), client_uuid=None):
+def create_sale(
+    *, cash_shift, details, payments, occurred_at=None, discount_amount=Decimal('0'),
+    client_uuid=None, client=None,
+):
     """Registra una venta completa: líneas + pagos divididos, en una sola
     transacción.
 
@@ -117,6 +121,8 @@ def create_sale(*, cash_shift, details, payments, occurred_at=None, discount_amo
     tenant, solo aplica reglas de negocio.
     `payments`: lista de dicts {'method', 'amount'} — deben sumar exacto el
     total calculado, si no, la venta se rechaza completa (rollback).
+    `client`: obligatorio si algún payment es CREDIT (fiado) — se carga a su
+    CreditAccount vía customers.services.charge_credit.
     """
     if cash_shift.status != CashShift.Status.OPEN:
         raise SaleError('No hay un turno abierto para registrar la venta.')
@@ -124,6 +130,10 @@ def create_sale(*, cash_shift, details, payments, occurred_at=None, discount_amo
         raise SaleError('La venta necesita al menos una línea.')
     if not payments:
         raise SaleError('La venta necesita al menos un pago.')
+
+    credit_total = sum((p['amount'] for p in payments if p['method'] == Payment.Method.CREDIT), Decimal('0'))
+    if credit_total > 0 and client is None:
+        raise SaleError('Un pago a crédito necesita un cliente asociado a la venta.')
 
     occurred_at = occurred_at or timezone.now()
     client_uuid = client_uuid or uuid.uuid4()
@@ -171,6 +181,7 @@ def create_sale(*, cash_shift, details, payments, occurred_at=None, discount_amo
 
         sale = Sale(
             cash_shift=cash_shift,
+            client=client,
             client_uuid=client_uuid,
             occurred_at=occurred_at,
             subtotal=subtotal,
@@ -186,5 +197,13 @@ def create_sale(*, cash_shift, details, payments, occurred_at=None, discount_amo
             SaleDetail.objects.create(sale=sale, **row)
         for p in payments:
             Payment.objects.create(sale=sale, method=p['method'], amount=p['amount'])
+
+        if credit_total > 0:
+            try:
+                charge_credit(account=client.credit_account, amount=credit_total, sale=sale)
+            except CreditError as exc:
+                # Dentro del atomic: si el crédito no alcanza, TODA la venta
+                # se revierte (stock incluido), no solo el cargo.
+                raise SaleError(str(exc))
 
     return sale
