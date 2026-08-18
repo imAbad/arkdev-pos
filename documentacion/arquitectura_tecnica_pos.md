@@ -98,6 +98,18 @@ Cada feature es dueña de su propio estado (Context o similar, como ya usan) y s
 
 **Decisión tomada durante construcción (confirma comportamiento mientras `SupportAccessLog` no existe):** `is_staff`/`is_superuser` **no** es un bypass automático del aislamiento a nivel API. Un usuario staff/superuser sin `UserProfile` ve listas vacías en los endpoints tenant-scoped (no 403, no acceso total); con `UserProfile` queda tan limitado como cualquier usuario normal. La única vía con visibilidad cross-tenant real hoy es Django Admin (`Model.objects.all()` sin filtrar, gateado por `is_staff` a nivel framework) — consistente con la regla de `CLAUDE.md` de que el admin de Django es solo para uso interno de desarrollo. Este comportamiento está fijado por tests (`tenants/tests/test_isolation.py::StaffAndSuperuserAccessTests`) y es el estado correcto hasta que se construya `SupportAccessLog`.
 
+#### 4.1.1 `SupervisorAuthorization` — PIN/reautenticación para `can_authorize_exceptions` (punto 6, construido)
+
+Mecanismo elegido, **preguntado antes de decidir** (no había precedente en el código existente): endpoint separado que devuelve un token corto de un solo uso — no validación inline por operación. Credencial del supervisor: email + password completos, reutilizando `django.contrib.auth.authenticate()` (mismo mecanismo que el login normal), no un PIN corto nuevo — cero piezas de credenciales adicionales que gestionar/resetear.
+
+- `POST /api/v1/auth/authorize-exception/` — `request.user` es el cajero ya autenticado (JWT normal, sin tocar su sesión); el body trae `email`/`password` del supervisor y un `reason` opcional (texto libre — "descuento fuera de política", "cancelación", etc., pos_especificacion_funcional.md §2/§13).
+- Autoridad del supervisor: `role == ADMINISTRADOR` **o** `capabilities.can_authorize_exceptions == True` — mismo criterio ya usado en el override de cierre de turno de `CashShift` (§4.2), no una regla nueva.
+- **Aislamiento**: el supervisor debe ser del MISMO tenant que quien pide la autorización — un email/password válido de OTRO tenant se rechaza igual que credenciales inválidas (403), sin filtrar si el email existe en otro tenant.
+- Token: `secrets.token_urlsafe(32)`, único, vida configurable vía `SUPERVISOR_AUTHORIZATION_TTL_MINUTES` (default 5 min, `.env`). Uso único: `used_at` se marca al consumir, un segundo intento con el mismo token falla. Además del tenant, el token queda atado al cajero específico que lo pidió (`requested_by`) — no es transferible a otra sesión aunque sea del mismo tenant.
+- **Todo intento queda en `AuditLog`**, éxito o fallo, con `reason_code` (`invalid_credentials`, `cross_tenant_or_no_profile`, `insufficient_capability`) en los fallos — actor es quien pide en el fallo, el supervisor en el éxito (`supervisor_authorization.granted`/`.denied`/`.consumed`).
+- `tenants.services.consume_supervisor_authorization(token, consuming_user)` es el mecanismo genérico de consumo — **ningún endpoint de acción sensible real (cancelar venta, aplicar descuento, devolución) existe todavía**; esta pieza es la infraestructura de autorización que esos endpoints futuros van a llamar, no un feature completo de punta a punta. No se re-valida la capability del supervisor al consumir (solo al emitir) — el token de vida corta ya representa "validado en este momento", mismo modelo de confianza que un access token JWT dentro de su vigencia.
+- Vive en `tenants` (no una app nueva): es autenticación de un segundo usuario, mismo dominio que login por email.
+
 ### 4.2 `sales`
 
 **CashRegister** / **CashShift** — *extraídos casi sin cambios, ya genéricos*
@@ -221,7 +233,7 @@ Esto reemplaza el patrón de `pharma_core` (filtro manual repetido por ViewSet) 
 ## 7. Seguridad
 
 - Secrets en **Azure Key Vault**, nunca en variables de entorno planas ni en código (ya está en el checklist de Carlos).
-- PIN/reautenticación para `can_authorize_exceptions`: endpoint separado que valida credenciales del supervisor sin cerrar la sesión del cajero — greenfield, confirmado en la auditoría que no existe nada parecido hoy.
+- PIN/reautenticación para `can_authorize_exceptions`: endpoint separado que valida credenciales del supervisor sin cerrar la sesión del cajero — greenfield, confirmado en la auditoría que no existe nada parecido hoy. ✅ **Construido (punto 6)** — ver detalle completo en §4.1.1.
 - `SupportAccessLog` para accesos de super-admin en modo soporte — **decisión pendiente**: ¿entra en MVP o se pospone? Mi recomendación: se puede posponer con seguridad mientras solo tú/Carlos tengan acceso de staff y sea 1 cliente — pero antes de dar acceso de soporte a datos de un tercer/cuarto cliente, ya debería existir.
 
 ---
@@ -241,7 +253,7 @@ Esto reemplaza el patrón de `pharma_core` (filtro manual repetido por ViewSet) 
 3. `catalog` (Product generalizado, con `image` desde el diseño aunque no se use aún).
 4. `sales` (Sale/SaleDetail/Payment rediseñados — pago dividido, impuestos reales, `client_uuid`/`occurred_at` en el modelo aunque la cola de sync no se construya todavía).
 5. `customers` (fiado) — greenfield. ✅ Construido: `Client`/`CreditAccount`/`CreditMovement`, `Sale.client` conectado, `Payment.method=CREDIT` carga a `CreditAccount` (ver §4.4).
-6. Capability `can_authorize_exceptions` + endpoint de PIN — greenfield.
+6. Capability `can_authorize_exceptions` + endpoint de PIN — greenfield. ✅ Construido: `tenants.SupervisorAuthorization`, token corto de un solo uso, ver §4.1.1.
 7. Frontend: features de venta/caja primero (son el corazón del uso diario), catálogo y clientes después.
 8. Integración de hardware en tienda real + pruebas con el cliente.
 9. (Post-MVP) Cola de sincronización offline completa, `SupportAccessLog`, CFDI.

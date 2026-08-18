@@ -84,7 +84,7 @@ Según el orden de construcción de `documentacion/arquitectura_tecnica_pos.md` 
 - [x] 3. `catalog` (Product generalizado, Category, Supplier, Batch)
 - [x] 4. `sales.Sale`/`SaleDetail`/`Payment` (pago dividido, impuestos, `client_uuid`/`occurred_at`)
 - [x] 5. `customers` (fiado) — `Sale.client` conectado, `Payment.method=CREDIT` carga a `CreditAccount`
-- [ ] 6. Endpoint de PIN/reautenticación para `can_authorize_exceptions` (la capability ya existe en `core/permissions.py`, el endpoint todavía no)
+- [x] 6. Endpoint de PIN/reautenticación para `can_authorize_exceptions` — `POST /api/v1/auth/authorize-exception/`, token corto de un solo uso (`tenants.SupervisorAuthorization`)
 - [ ] 7. Frontend (`pos-frontend/`)
 - [ ] 8. Integración de hardware en tienda real
 - [ ] 9. Cola de sincronización offline, `SupportAccessLog`, CFDI
