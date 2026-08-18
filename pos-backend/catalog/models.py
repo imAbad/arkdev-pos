@@ -1,0 +1,156 @@
+from django.db import models
+from django.utils import timezone
+from django.utils.text import slugify
+
+from core.models import BaseTenantModel
+
+
+def product_image_upload_path(instance, filename):
+    # Prefijo por tenant, como ya decidido en arquitectura_tecnica_pos.md
+    # §4.3 — así el backend de Azure Blob (django-storages) no necesita
+    # ningún cambio de convención cuando se active en producción.
+    return f'tenant_{instance.company_id}/products/{filename}'
+
+
+class Category(BaseTenantModel):
+    """Extraído tal cual de pharma_core (decisiones_post_auditoria.md §2),
+    con `company` no-nullable en vez de nullable — todo modelo de tenant
+    la tiene siempre (CLAUDE.md #2), sin excepción."""
+
+    name = models.CharField(max_length=100)
+    slug = models.SlugField(max_length=100, blank=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta(BaseTenantModel.Meta):
+        verbose_name_plural = 'categories'
+        constraints = [
+            models.UniqueConstraint(fields=['company', 'name'], name='category_unique_company_name'),
+            models.UniqueConstraint(fields=['company', 'slug'], name='category_unique_company_slug'),
+        ]
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = slugify(self.name)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.name
+
+
+class Supplier(BaseTenantModel):
+    """Extraído tal cual de pharma_core."""
+
+    name = models.CharField(max_length=250)
+    contact_name = models.CharField(max_length=100, blank=True)
+    phone = models.CharField(max_length=20, blank=True)
+    email = models.EmailField(blank=True)
+
+    def __str__(self):
+        return self.name
+
+
+class Product(BaseTenantModel):
+    """Generalizado — sin campos de farmacia (health_fraction, drug_type,
+    concentration_value, etc. de pharma_core no se portan). unit_type +
+    variant_attributes generalizan granel/papelería/servicios en un solo
+    modelo, en vez de una tabla de variantes rígida (ver
+    decisiones_post_auditoria.md, pendiente #1 de arquitectura_tecnica_pos.md
+    §10 si esto no alcanza para un caso real de variantes).
+
+    Cómo `unit_type` se traduce a lógica de venta a granel (cantidad
+    fraccionaria, precio por gramo/litro, báscula) es decisión de `sales`
+    (punto 4 del orden de construcción), no de este modelo — aquí solo vive
+    el dato.
+    """
+
+    class UnitType(models.TextChoices):
+        PIEZA = 'PIEZA', 'Pieza'
+        KG = 'KG', 'Kilogramo'
+        GRAMO = 'GRAMO', 'Gramo'
+        LITRO = 'LITRO', 'Litro'
+        PAQUETE = 'PAQUETE', 'Paquete'
+        SERVICIO = 'SERVICIO', 'Servicio'
+
+    name = models.CharField(max_length=255)
+    sku = models.CharField(max_length=50)
+    barcode = models.CharField(max_length=100, null=True, blank=True)
+    category = models.ForeignKey(Category, on_delete=models.PROTECT, related_name='products')
+    supplier = models.ForeignKey(
+        Supplier, on_delete=models.SET_NULL, related_name='products', null=True, blank=True,
+    )
+
+    unit_type = models.CharField(max_length=10, choices=UnitType.choices, default=UnitType.PIEZA)
+    # Reemplaza la obligatoriedad de lote de pharma_core: FEFO se vuelve
+    # opcional por producto, no una exigencia de cada línea de venta (ver
+    # decisiones_post_auditoria.md §3). No implica ninguna constraint de BD
+    # que ate Product a Batch — ver catalog/tests/test_models.py.
+    requires_batch = models.BooleanField(default=False)
+    variant_attributes = models.JSONField(null=True, blank=True)
+
+    cost_price = models.DecimalField(max_digits=12, decimal_places=2)
+    sale_price = models.DecimalField(max_digits=12, decimal_places=2)
+    # Reemplaza tax_percentage, huérfano en pharma_core (nunca se usaba en
+    # el cálculo real — confirmado en la auditoría). Este sí se conecta al
+    # cálculo de impuestos cuando sales.Sale exista (punto 4).
+    tax_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    min_stock = models.PositiveIntegerField(default=0)
+
+    # Agregado desde el diseño aunque no se use en MVP — evita migrar de
+    # "URL en texto" a archivo real más adelante (arquitectura_tecnica_pos.md
+    # §4.3). Storage local en dev; Azure Blob en producción vía settings.
+    image = models.ImageField(upload_to=product_image_upload_path, null=True, blank=True)
+
+    class Meta(BaseTenantModel.Meta):
+        constraints = [
+            models.UniqueConstraint(fields=['company', 'sku'], name='product_unique_company_sku'),
+            models.UniqueConstraint(
+                fields=['company', 'barcode'],
+                condition=models.Q(barcode__isnull=False),
+                name='product_unique_company_barcode',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.name} ({self.sku})'
+
+
+class Batch(BaseTenantModel):
+    """Lote — extraído de pharma_core, con dos cambios deliberados:
+    `branch` ya no es nullable (un lote siempre entra a existencias de una
+    sucursal concreta) y se agrega el UniqueConstraint (product,
+    batch_number) que en pharma_core solo era una regla de dominio no
+    forzada en BD (gap identificado al portar este modelo)."""
+
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='batches')
+    branch = models.ForeignKey('tenants.Branch', on_delete=models.PROTECT, related_name='batches')
+    batch_number = models.CharField(max_length=100)
+    initial_quantity = models.PositiveIntegerField()
+    current_quantity = models.PositiveIntegerField(editable=False)
+    expiration_date = models.DateField()
+    received_date = models.DateField(auto_now_add=True)
+
+    class Meta(BaseTenantModel.Meta):
+        ordering = ['expiration_date']
+        constraints = [
+            models.UniqueConstraint(fields=['product', 'batch_number'], name='batch_unique_product_batch_number'),
+        ]
+
+    def save(self, *args, **kwargs):
+        if self._state.adding:
+            self.current_quantity = self.initial_quantity
+        self.company_id = self.product.company_id
+        super().save(*args, **kwargs)
+
+    @property
+    def is_expired(self):
+        return self.expiration_date < timezone.localdate()
+
+    @property
+    def days_to_expire(self):
+        return (self.expiration_date - timezone.localdate()).days
+
+    def can_be_sold(self):
+        return self.current_quantity > 0 and not self.is_expired
+
+    def __str__(self):
+        return f'{self.product.name} · lote {self.batch_number}'
