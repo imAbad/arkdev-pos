@@ -39,26 +39,51 @@ Este es el blueprint técnico. Cuando empiecen con Claude Code a construir (no s
 Organizar por feature, no por tipo de archivo:
 
 ```
-src/
-  features/
-    sales/          → carrito, checkout, ticket (reemplaza POS.tsx monolítico)
-    shift/           → apertura/cierre de caja, arqueo
-    catalog/         → CRUD de producto, categorías
-    customers/       → clientes, fiado
-    reports/
-    admin/           → configuración de tenant, usuarios, roles
-    vendor/          → panel super-admin (ya tiene base: VendorPanel/VendorRoute)
-  services/
-    api/
-      salesApi.ts
-      catalogApi.ts
-      customersApi.ts
-      authApi.ts      → (reemplaza el api.ts monolítico de 1613 líneas)
-  lib/                → utils sin dependencia de dominio (reutilizable tal cual de pharma_front)
-  components/ui/      → shadcn/Radix (reutilizable tal cual)
+pos-frontend/
+  src/
+    features/
+      auth/            ✅ AuthProvider (token, profile, branch, company settings), LoginScreen
+      shift/            ✅ OpenShiftScreen
+      sales/             ✅ SaleScreen, ProductSearch, CartView, PaymentPanel, SaleConfirmation, cart.ts
+      catalog/         → CRUD de producto, categorías — pendiente
+      customers/       → clientes, fiado — pendiente
+      reports/         → pendiente
+      admin/           → configuración de tenant, usuarios, roles — pendiente
+      vendor/          → panel super-admin — pendiente
+    services/
+      api/
+        authApi.ts       ✅
+        tenantsApi.ts     ✅ (me, branch, company-settings — no estaba en la lista original, se agregó al construir)
+        salesApi.ts        ✅ (cash-registers, cash-shifts, create-sale)
+        catalogApi.ts       ✅ (búsqueda de productos)
+        customersApi.ts   → pendiente
+    i18n/              ✅ strings.ts (español) + index.ts — ver nota de i18n abajo
+    lib/               ✅ api-client, auth-storage, theme, format, utils — sin dependencia de dominio
+    components/ui/     ✅ button, input, label, card, confirm-dialog — Radix + Tailwind, NO se usó el CLI de shadcn (ver nota abajo)
+    types/api.ts       ✅ tipos leídos de los serializers reales, no de esta documentación
 ```
 
-Cada feature es dueña de su propio estado (Context o similar, como ya usan) y su propio cliente API — nada de un solo archivo gigante que mezcle todos los dominios.
+Cada feature es dueña de su propio estado (Context o similar) y su propio cliente API — nada de un solo archivo gigante que mezcle todos los dominios.
+
+### 3.1 Decisiones tomadas al arrancar el frontend (sesión de la primera pantalla)
+
+- **`components/ui/` es Radix + Tailwind con estilos propios, no shadcn CLI**: el brief de diseño pide botones grandes y táctiles (mín. 56px de alto) para personal con poca práctica en pantallas táctiles — el tamaño compacto por default de shadcn no encaja, y correr el CLI para luego sobreescribir cada tamaño no aportaba sobre construir el componente directo con Radix (`@radix-ui/react-*`) + `class-variance-authority` + Tailwind, que es exactamente lo que el CLI genera de cualquier forma. Sigue siendo "shadcn/Radix" en el sentido de la sección 3 original (mismas piezas, mismo patrón de composición), no una librería de componentes distinta.
+- **Sin React Router todavía**: el alcance de esta sesión es un flujo lineal de 3 pasos (login → abrir turno → vender) sin navegación libre entre pantallas — `App.tsx` decide qué pantalla mostrar con un estado simple (`status` de auth + `shift` actual), no rutas. Se agrega un router cuando haya navegación real que lo justifique (catálogo, reportes, admin) — no antes.
+- **i18n centralizado en `src/i18n/strings.ts`**: un solo objeto anidado con todo el texto visible de la app; ningún componente escribe un string suelto. Hoy solo existe `es` (español); agregar un idioma nuevo es crear `strings.<locale>.ts` con la misma forma (TypeScript avisa si falta una clave, por el tipo `Strings` exportado) y elegirlo en `i18n/index.ts` — no toca ningún componente. Esto es directamente la corrección al problema que la auditoría encontró en `pharma_frontend` (strings de farmacia repartidos sin i18n en 9 archivos).
+- **Colores con significado fijo, no por componente**: verde (`confirm`) para cualquier acción de "avanzar/confirmar" (Entrar, Abrir turno, Agregar, Cobrar), rojo (`cancel`) para cancelar/quitar/error, azul (`accent`, de `CompanySettings.accent_color`) **solo** para la barra de marca/navegación — nunca en un botón de acción. Definidos como tokens de Tailwind v4 (`@theme` en `index.css`), no clases sueltas repetidas por componente.
+- **La marca del tenant se aplica DESPUÉS del login, no antes**: como ya está decidido (§5, login por email sin subdominio propio por cliente), la pantalla de login no puede saber a qué tenant pertenece quien va a entrar — se muestra neutra. `accent_color`/`business_name`/`logo` se cargan y aplican (`applyAccentColor()`, variable CSS `--color-accent`) recién después de un login exitoso, cuando ya se resolvió el tenant vía `UserProfile.company`.
+- **Confirmación de venta completada es pantalla completa, no un modal ni un toast** — es lo primero que pedía el brief de diseño (feedback inmediato y grande). El diálogo de confirmación (Radix Dialog) sí se usa, pero solo para "¿cancelar la venta?" (una decisión destructiva chica), no para el resultado de la venta.
+- **Redondeo de dinero**: `features/sales/cart.ts` replica en JS el mismo redondeo a centavos que usa `sales.services.create_sale` en el backend (`quantize(Decimal('0.01'))` por línea), para que el total mostrado en pantalla coincida con el que el backend calcula al crear la venta — si no coinciden, `create_sale` rechaza toda la venta (`Los pagos suman X pero la venta totaliza Y`). Límite conocido y documentado en el código: en un caso exacto a medio centavo, Python usa banker's rounding y el `Math.round` de JS no — probabilidad prácticamente nula con precios reales de 2 decimales, no se justificó agregar una librería de precisión decimal (`decimal.js`) para esto en esta sesión.
+- **Pago dividido y fiado (CREDIT) quedan fuera de esta pantalla a propósito** — el alcance pedido era "un solo método de pago"; `PaymentPanel` ofrece Efectivo/Tarjeta/Transferencia (con cálculo de cambio para efectivo), no Crédito (que necesitaría selector de cliente, fuera de alcance). Se agrega en una sesión posterior de checkout completo.
+
+### 3.2 Endpoints de apoyo agregados al backend al construir el frontend
+
+Se descubrieron leyendo los serializers/endpoints reales (como pedía la tarea) antes de escribir componentes — ninguno estaba documentado como faltante, pero eran necesarios para que un login real funcionara de punta a punta:
+
+- `GET /api/v1/user-profiles/me/` — perfil del usuario autenticado (branch, role, capabilities) sin tener que adivinar cuál fila del listado (todo el tenant) le corresponde.
+- `GET /api/v1/cash-shifts/current/` — el turno abierto del cajero actual, si existe (404 si no) — permite que la app salte la pantalla de apertura si el cajero ya tiene turno (ej. recargó la página) en vez de chocar con "ya tienes un turno abierto".
+- `?search=` en `GET /api/v1/products/` (`rest_framework.filters.SearchFilter` sobre `name`/`sku`/`barcode`) — sin esto no había forma de buscar producto, solo listar todo paginado.
+- **CORS** (`django-cors-headers`, `CORS_ALLOWED_ORIGINS` en settings, default cubre los puertos de `vite dev`/`vite preview`) — sin esto el navegador bloquea toda llamada del frontend (puerto distinto) a la API.
 
 ---
 
@@ -85,6 +110,9 @@ Cada feature es dueña de su propio estado (Context o similar, como ya usan) y s
 |---|---|---|
 | company | FK Company (1:1) | |
 | enabled_modules | JSONField | `{'cfdi': false, 'multiple_branches': false, ...}` — reutilizado tal cual del patrón ya confirmado en la auditoría |
+| business_name | str, blank | **Agregado para el arranque de frontend.** Nombre a mostrar en la interfaz — puede diferir de `Company.name` (nombre legal/de registro). Vacío por default: el frontend cae a un nombre genérico (`Punto de Venta`) si el tenant no lo configuró. |
+| logo | ImageField, nullable | Mismo criterio que `catalog.Product.image` (§4.3): prefijo por tenant (`tenant_{id}/branding/...`), Azure Blob vía `django-storages` en producción, storage local en dev, agregado desde el diseño aunque no se use en MVP. |
+| accent_color | str (hex, `#RRGGBB`), default `#1E5B94` | Validado con `RegexValidator` — rechaza cualquier cosa que no sea hex de 6 dígitos. **Tono de referencia mantenido tal cual** (azul medio-oscuro, ~4.8:1 de contraste con texto blanco, suficiente para AA) — no se ajustó, ver la nota de la sesión de frontend en §3 sobre dónde se usa. |
 
 **UserProfile** — *cambio importante: login por email, no username*
 | Campo | Tipo | Nota |
@@ -254,7 +282,7 @@ Esto reemplaza el patrón de `pharma_core` (filtro manual repetido por ViewSet) 
 4. `sales` (Sale/SaleDetail/Payment rediseñados — pago dividido, impuestos reales, `client_uuid`/`occurred_at` en el modelo aunque la cola de sync no se construya todavía).
 5. `customers` (fiado) — greenfield. ✅ Construido: `Client`/`CreditAccount`/`CreditMovement`, `Sale.client` conectado, `Payment.method=CREDIT` carga a `CreditAccount` (ver §4.4).
 6. Capability `can_authorize_exceptions` + endpoint de PIN — greenfield. ✅ Construido: `tenants.SupervisorAuthorization`, token corto de un solo uso, ver §4.1.1.
-7. Frontend: features de venta/caja primero (son el corazón del uso diario), catálogo y clientes después.
+7. Frontend: features de venta/caja primero (son el corazón del uso diario), catálogo y clientes después. 🔶 **Arrancado**: login + apertura de turno + venta simple (un solo método de pago) probados de punta a punta contra el backend real — ver §3.1/§3.2. Falta: checkout completo (pago dividido, fiado, descuentos con autorización de supervisor), catálogo, clientes, reportes, admin, vendor.
 8. Integración de hardware en tienda real + pruebas con el cliente.
 9. (Post-MVP) Cola de sincronización offline completa, `SupportAccessLog`, CFDI.
 
