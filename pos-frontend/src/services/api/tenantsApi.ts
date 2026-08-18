@@ -11,6 +11,11 @@ export async function getBranch(branchId: number): Promise<Branch> {
   return response.data
 }
 
+export async function listBranches(): Promise<Branch[]> {
+  const response = await apiClient.get<Paginated<Branch>>('/branches/')
+  return response.data.results
+}
+
 /** Un tenant siempre tiene exactamente una fila propia — el endpoint ya
  * viene acotado por TenantScopedQuerySet, no hace falta filtrar por id. */
 export async function getMyCompanySettings(): Promise<CompanySettings | null> {

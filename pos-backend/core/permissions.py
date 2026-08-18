@@ -50,3 +50,16 @@ def capability_required(capability):
 
 CanAuthorizeExceptions = capability_required('can_authorize_exceptions')
 HandlesCash = capability_required('handles_cash')
+
+
+class IsAdministrator(BasePermission):
+    """Gate por rol, no por capability — reportes financieros son
+    visibilidad de administrador (ver pos_especificacion_funcional.md §2,
+    tabla de roles), no una operación de caja que un CAJERO con la
+    capability correcta pueda desbloquear."""
+
+    message = 'Esta acción requiere el rol de administrador.'
+
+    def has_permission(self, request, view):
+        profile = getattr(request.user, 'profile', None)
+        return profile is not None and profile.role == profile.Role.ADMINISTRADOR

@@ -1,12 +1,15 @@
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/features/auth/AuthProvider'
+import { useNavigation } from '@/App'
 import { t } from '@/i18n'
 
 /** Barra de marca — azul (accent_color del tenant), solo para
  * identidad/navegación, nunca para botones de acción (ver index.css). */
 export function AppHeader() {
-  const { companySettings, branch, logout } = useAuth()
+  const { companySettings, branch, profile, logout } = useAuth()
+  const { view, openReports } = useNavigation()
   const businessName = companySettings?.business_name?.trim() || t.common.appName
+  const showReportsLink = view === 'main' && profile?.role === 'ADMINISTRADOR'
 
   return (
     <header className="flex items-center justify-between gap-4 bg-accent px-6 py-4 text-white">
@@ -19,9 +22,16 @@ export function AppHeader() {
           {branch && <p className="text-sm text-white/80 leading-tight">{branch.name}</p>}
         </div>
       </div>
-      <Button variant="neutral" size="compact" onClick={logout}>
-        {t.common.logout}
-      </Button>
+      <div className="flex items-center gap-3">
+        {showReportsLink && (
+          <Button variant="neutral" size="compact" onClick={openReports}>
+            {t.reports.navLink}
+          </Button>
+        )}
+        <Button variant="neutral" size="compact" onClick={logout}>
+          {t.common.logout}
+        </Button>
+      </div>
     </header>
   )
 }

@@ -141,3 +141,56 @@ export interface ApiErrorBody {
   code?: string
   detail?: unknown
 }
+
+export interface SalesByProductRow {
+  product_id: number
+  product_name: string
+  category_name: string
+  quantity_sold: string
+  revenue: string
+  tax: string
+}
+
+export interface SalesByCategoryRow {
+  category_id: number | null
+  category_name: string
+  quantity_sold: string
+  revenue: string
+  tax: string
+}
+
+export interface InventoryValuationRow {
+  product_id: number
+  product_name: string
+  category_name: string
+  quantity: number
+  valuation: string
+}
+
+export interface ExpiredStockRow {
+  batch_id: number
+  batch_number: string
+  product_id: number
+  product_name: string
+  branch_id: number
+  branch_name: string
+  expiration_date: string
+  quantity: number
+  valuation: string
+}
+
+export interface CashShiftClosureRow {
+  id: number
+  branch_name: string
+  register_name: string
+  user_email: string
+  opened_at: string
+  closed_at: string
+  opening_balance: string
+  expected_closing_balance: string
+  actual_closing_balance: string
+  cash_difference: string
+  expected_voucher_total: string
+  actual_voucher_total: string
+  voucher_difference: string
+}
