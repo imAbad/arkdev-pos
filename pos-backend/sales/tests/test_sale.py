@@ -140,6 +140,27 @@ class CreateSaleServiceTests(TestCase):
         self.assertIn(f'No hay suficiente stock de {self.ctx["product"].name}', str(ctx.exception))
         self.assertEqual(Sale.objects.count(), 0)
 
+    def test_product_requiring_batch_auto_selects_fefo_when_no_batch_given(self):
+        # Punto 1: sin esto, una venta de un producto requires_batch=True
+        # sin batch_id explícito no descontaba NADA de stock (el gap real
+        # encontrado, no solo "sin orden FEFO"). Ahora se completa
+        # automático por FEFO y queda registrado en SaleDetail.batch.
+        product = create_product(self.ctx['company'], name='Yogurt', sku='YOG-FEFO', requires_batch=True)
+        near = create_batch(product, self.ctx['branch'], batch_number='CERCANO', initial_quantity=5, expiration_date=timezone.localdate() + timedelta(days=3))
+        far = create_batch(product, self.ctx['branch'], batch_number='LEJANO', initial_quantity=5, expiration_date=timezone.localdate() + timedelta(days=60))
+
+        sale = create_sale(
+            cash_shift=self.ctx['shift'],
+            details=[{'product': product, 'batch': None, 'quantity': Decimal('2'), 'unit_price': Decimal('10.00')}],
+            payments=[{'method': 'CASH', 'amount': Decimal('20.00')}],  # este producto tiene tax_rate=0 (default)
+        )
+        detail = sale.details.get()
+        self.assertEqual(detail.batch_id, near.id)
+        near.refresh_from_db()
+        far.refresh_from_db()
+        self.assertEqual(near.current_quantity, 3)
+        self.assertEqual(far.current_quantity, 5)
+
     def test_rejected_sale_leaves_no_partial_rows_rollback(self):
         # Confirma que el rollback es completo: ni Sale ni SaleDetail ni
         # Payment quedan a medias cuando los pagos no cuadran.

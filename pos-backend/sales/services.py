@@ -6,7 +6,7 @@ from django.db.models import Sum
 from django.utils import timezone
 
 from audit.services import log_action
-from catalog.services import InsufficientStockError, decrement_batch_stock
+from catalog.services import InsufficientStockError, decrement_batch_stock, decrement_stock_fefo
 from customers.services import CreditError, charge_credit
 from sales.models import CashShift, Payment, Sale, SaleDetail
 
@@ -165,6 +165,18 @@ def create_sale(
             if batch is not None:
                 try:
                     decrement_batch_stock(batch=batch, quantity=quantity)
+                except InsufficientStockError as exc:
+                    raise SaleError(f'No hay suficiente stock de {product.name}. {exc}')
+            elif product.requires_batch:
+                # Sin lote explícito en la línea: el sistema elige uno por
+                # FEFO, no se le pide al cajero que elija — ver
+                # catalog.services.decrement_stock_fefo. `batch` se
+                # reasigna aquí para que detail_rows registre cuál lote
+                # real se usó (trazabilidad para devoluciones, punto 10).
+                try:
+                    batch = decrement_stock_fefo(
+                        product=product, branch=cash_shift.cash_register.branch, quantity=quantity,
+                    )
                 except InsufficientStockError as exc:
                     raise SaleError(f'No hay suficiente stock de {product.name}. {exc}')
 
