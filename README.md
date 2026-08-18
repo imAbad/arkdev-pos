@@ -83,6 +83,14 @@ python manage.py test
 
 Los tests de aislamiento multi-tenant (uno de los objetivos de mayor riesgo del proyecto, ver `CLAUDE.md` regla #7) y de concurrencia (ej. apertura de turno de caja, `sales/tests/test_cash_shift.py::OpenShiftConcurrencyTests`) corren contra Postgres real, no SQLite — necesitan la base de datos del contenedor `db` o una instancia local.
 
+Frontend (Vitest + React Testing Library + MSW — ver `arquitectura_tecnica_pos.md` §8.1 para el patrón):
+
+```bash
+cd pos-frontend
+npm test          # una vez
+npm run test:watch  # modo watch
+```
+
 ## Variables de entorno
 
 Ninguna vive commiteada con valores reales (`pos-backend/.env` está en `.gitignore`; `pos-backend/.env.example` trae solo referencia de dev). En producción viven en **Azure Key Vault**, nunca en variables de entorno planas del App Service (`documentacion/brief_infraestructura_carlos.md` §3/§7).

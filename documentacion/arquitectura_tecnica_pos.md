@@ -270,7 +270,47 @@ Esto reemplaza el patrón de `pharma_core` (filtro manual repetido por ViewSet) 
 
 - Backend: portar las *reglas* de los tests existentes (`sales/tests.py`, `inventory/tests.py`, `organizations/tests.py`) adaptadas al nuevo modelo — concurrencia en descuento de stock, unicidad de turno abierto, reconciliación de cierre de caja.
 - Backend: tests obligatorios para el aislamiento multi-tenant (sección 5) — no es opcional, es la pieza de mayor riesgo de seguridad del sistema.
-- Frontend: empezar a meter tests donde no había ninguno — mínimo para `features/sales` y `features/shift`, que es donde vive el dinero.
+- Frontend: **el patrón se fijó al construir login/turno/venta (punto 7), no se pospuso** — ver §8.1. Toda feature nueva de frontend lo sigue desde el primer commit, no se agrega después (era el riesgo explícito a evitar: la brecha de testing crece más barata de cerrar mientras la base es chica).
+
+### 8.1 Frontend — patrón de testing (Vitest + React Testing Library + MSW)
+
+Cerrado explícitamente cuando la base todavía era chica (3 pantallas), antes de seguir agregando features — no se dejó para cuando hubiera más superficie que cubrir.
+
+**Stack**: Vitest (mismo motor que Vite, cero config paralela) + `@testing-library/react` (renderiza componentes reales, interactúa por rol/label como lo haría una persona, no por selectores de implementación) + `msw` (Mock Service Worker) para interceptar HTTP. `npm test` corre todo una vez, `npm run test:watch` en modo watch.
+
+**Dónde viven los tests**: co-ubicados junto al archivo que prueban (`Componente.tsx` + `Componente.test.tsx` en la misma carpeta), no en una carpeta `__tests__/` aparte — un test de una feature que se mueve o se borra se mueve/borra junto con su test, no queda huérfano.
+
+```
+src/
+  test/                      ← infraestructura de testing compartida, NO tests en sí
+    setup.ts                   → jest-dom + ciclo de vida de MSW (listen/reset/close) + limpieza de localStorage
+    server.ts                    → setupServer(...handlers) de MSW
+    handlers.ts                    → camino feliz por default para cada endpoint que el frontend ya consume
+    fixtures.ts                      → factories (makeProfile, makeProduct, makeShift...) con la forma EXACTA
+                                        de los serializers reales (types/api.ts), no inventada
+    test-utils.tsx                     → renderWithAuth() — renderiza una pantalla con un AuthContext ya
+                                          resuelto, sin repetir un login real en cada test
+  features/
+    sales/
+      cart.ts
+      cart.test.ts               ← junto al archivo que prueba
+      SaleScreen.tsx
+      SaleScreen.test.tsx
+  App.tsx
+  App.test.tsx
+```
+
+**Cómo se mockea la llamada a la API — decisión explícita, no la única posible**: se evaluaron dos caminos.
+1. **Backend real de prueba** (Django test server real contra Postgres) — descartado por "viable rápido": exige orquestar dos procesos/lenguajes distintos solo para correr `npm test`, migraciones, seed de datos, y vuelve a probar la MISMA lógica de negocio que ya tienen los 224 tests de backend (redundante y lento, no es lo que un test de componente de React debería estar validando).
+2. **MSW, interceptando la petición HTTP real** (elegido) — los componentes, `services/api/*.ts` y `lib/api-client.ts` corren **sin modificar ni mockear ninguno**; solo se intercepta la respuesta de red al nivel del navegador (vía XHR, que es lo que usa `axios` en jsdom). Esto prueba la integración real componente → servicio → cliente HTTP → parseo de la respuesta, incluyendo casos como el mapeo de errores (ver más abajo), que un mock a nivel de función (`vi.mock('@/services/api/...')`) no ejercitaría de la misma forma.
+
+**Regla explícita — no mockear la lógica de negocio que ya vive en el frontend** (cálculo de IVA, cambio, totales de `features/sales/cart.ts`): los tests dejan correr esa lógica real y confirman el **resultado numérico correcto** (ej. `$47.38` con IVA mixto 16%/0% en el mismo carrito — el mismo caso probado a mano contra el backend real al construir la pantalla), no solo que una función se haya llamado. Mismo estándar que ya se usa en los 224 tests de backend.
+
+**`renderWithAuth()` no es una excepción a esa regla** — no mockea lógica de negocio, aísla una pantalla (`OpenShiftScreen`, `SaleScreen`) de la autenticación (una preocupación aparte) para no repetir un login real en cada test. Para probar el login/la navegación entre pantallas EN SÍ (que es exactamente lo que `AuthProvider`/`App` deciden), se renderiza `<App/>` completo contra MSW, sin este helper — ver `App.test.tsx`.
+
+**El mapeo de errores HTTP → mensaje en español queda fijado por test, no solo corregido una vez**: se encontró un bug real probando el login a mano (SimpleJWT devuelve *"No active account found..."* en inglés sin pasar por `core.exceptions.api_exception_handler`, y se mostraba tal cual). La corrección (`loginErrorMessage()` en `AuthProvider.tsx`, exportada a propósito) tiene tests directos (`AuthProvider.test.tsx`) que fuerzan un 401 con ese texto exacto y confirman que el mensaje mostrado NUNCA es el crudo del backend — más un test de integración en `App.test.tsx` que reproduce el flujo completo vía MSW. Cualquier cambio futuro que rompa el mapeo (ej. alguien reemplaza `loginErrorMessage` por `apiErrorMessage` genérico) lo detecta el test, no un QA manual.
+
+**Nota de entorno, no de la app**: Node 22+ trae un `localStorage` global experimental que choca con el de jsdom en tests (`window.localStorage` queda sin `.clear()`/`.getItem()` funcionales). Se desactiva con `--no-experimental-webstorage` vía `NODE_OPTIONS` en los scripts `test`/`test:watch` de `package.json` (con `cross-env` para que funcione igual en Windows) — nada que ver con el código de la app, es una incompatibilidad puntual de esta versión de Node con jsdom.
 
 ---
 
