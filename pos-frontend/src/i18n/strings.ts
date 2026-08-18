@@ -101,6 +101,7 @@ export const es = {
     confirmCancelSaleYes: 'Sí, cancelar venta',
     errorGeneric: 'No se pudo registrar la venta. Intenta de nuevo.',
     errorNoItems: 'Agrega al menos un producto antes de cobrar.',
+    nearExpiryBadge: 'Caduca pronto',
   },
   confirmation: {
     title: '¡Venta registrada!',
@@ -141,6 +142,10 @@ export const es = {
     tabSalesByCashier: 'Ventas por cajero',
     tabInventoryValuation: 'Valuación de inventario',
     tabExpiredStock: 'Mermas por caducidad',
+    tabNearExpiry: 'Próximos a caducar',
+    daysWindow: 'Días a futuro',
+    nearExpiryNote: 'Lotes vigentes que caducan pronto — considera promoción antes de que se conviertan en merma.',
+    colDaysToExpire: 'Días para caducar',
     tabCashShiftClosures: 'Cierres de caja',
     colProduct: 'Producto',
     colCategory: 'Categoría',

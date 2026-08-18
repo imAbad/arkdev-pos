@@ -5,6 +5,9 @@
   §3 y la sesión de arranque de frontend):
     - confirm (verde) = confirmar/cobrar, nunca para otra cosa.
     - cancel (rojo) = cancelar/error, nunca para otra cosa.
+    - warning (ámbar) = aviso no bloqueante (ej. producto próximo a caducar,
+      punto 4) — deliberadamente distinto de cancel: no es un error, no
+      bloquea nada, solo pide atención.
     - accent (azul, default de referencia) = marca/navegación, NUNCA para
       acciones — se sobreescribe en runtime con CompanySettings.accent_color
       del tenant (ver src/lib/theme.ts), con este valor como fallback.
@@ -19,6 +22,8 @@
   --color-confirm-hover: #166534;
   --color-cancel: #b91c1c;
   --color-cancel-hover: #991b1b;
+  --color-warning: #b45309;
+  --color-warning-bg: #fffbeb;
 
   --color-ink: #1c1917;
   --color-surface: #ffffff;

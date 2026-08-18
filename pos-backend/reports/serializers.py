@@ -19,3 +19,8 @@ class SalesByProductQuerySerializer(DateRangeReportQuerySerializer):
 
 class BranchOnlyReportQuerySerializer(serializers.Serializer):
     branch = serializers.IntegerField(required=False, allow_null=True)
+
+
+class NearExpiryReportQuerySerializer(serializers.Serializer):
+    branch = serializers.IntegerField(required=False, allow_null=True)
+    days = serializers.IntegerField(required=False, default=7, min_value=1, max_value=365)

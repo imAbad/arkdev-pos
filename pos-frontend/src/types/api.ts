@@ -90,6 +90,7 @@ export interface Product {
   tax_rate: string
   min_stock: number
   image: string | null
+  nearest_batch_expiration: string | null
   company: number
 }
 
@@ -171,6 +172,19 @@ export interface InventoryValuationRow {
   product_id: number
   product_name: string
   category_name: string
+  quantity: number
+  valuation: string
+}
+
+export interface NearExpiryStockRow {
+  batch_id: number
+  batch_number: string
+  product_id: number
+  product_name: string
+  branch_id: number
+  branch_name: string
+  expiration_date: string
+  days_to_expire: number
   quantity: number
   valuation: string
 }

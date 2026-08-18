@@ -165,6 +165,44 @@ class ExpiredStockReportServiceTests(TestCase):
         self.assertEqual(rows, [])
 
 
+class NearExpiryStockReportServiceTests(TestCase):
+    def setUp(self):
+        self.ctx = create_checkout_context()
+        self.today = timezone.localdate()
+
+    def test_lists_batches_expiring_within_the_window_ordered_soonest_first(self):
+        product = create_product(self.ctx['company'], name='Yogurt', sku='YOGURT-NE', cost_price=Decimal('5.00'))
+        soon = create_batch(product, self.ctx['branch'], batch_number='EN-3-DIAS', initial_quantity=4, expiration_date=self.today + timedelta(days=3))
+        later = create_batch(product, self.ctx['branch'], batch_number='EN-6-DIAS', initial_quantity=2, expiration_date=self.today + timedelta(days=6))
+
+        rows = services.near_expiry_stock_report(company=self.ctx['company'], days=7)
+        self.assertEqual([r['batch_id'] for r in rows], [soon.id, later.id])
+        self.assertEqual(rows[0]['days_to_expire'], 3)
+
+    def test_excludes_batches_outside_the_window(self):
+        product = create_product(self.ctx['company'], sku='PROD-LEJOS', cost_price=Decimal('5.00'))
+        create_batch(product, self.ctx['branch'], expiration_date=self.today + timedelta(days=20))
+
+        rows = services.near_expiry_stock_report(company=self.ctx['company'], days=7)
+        self.assertEqual(rows, [])
+
+    def test_excludes_already_expired_batches(self):
+        # Esos van en expired_stock_report, no se duplican aquí.
+        product = create_product(self.ctx['company'], sku='PROD-VENCIDO', cost_price=Decimal('5.00'))
+        create_batch(product, self.ctx['branch'], expiration_date=self.today - timedelta(days=1))
+
+        rows = services.near_expiry_stock_report(company=self.ctx['company'], days=7)
+        self.assertEqual(rows, [])
+
+    def test_window_is_configurable(self):
+        product = create_product(self.ctx['company'], sku='PROD-14', cost_price=Decimal('5.00'))
+        batch = create_batch(product, self.ctx['branch'], expiration_date=self.today + timedelta(days=14))
+
+        self.assertEqual(services.near_expiry_stock_report(company=self.ctx['company'], days=7), [])
+        rows_30 = services.near_expiry_stock_report(company=self.ctx['company'], days=30)
+        self.assertEqual([r['batch_id'] for r in rows_30], [batch.id])
+
+
 class CashShiftClosuresServiceTests(TestCase):
     def setUp(self):
         self.ctx = create_checkout_context()
@@ -268,6 +306,21 @@ class ReportsApiPermissionTests(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data[0]['cash_difference'], Decimal('3.00'))
+
+    def test_near_expiry_stock_report_over_the_api_with_custom_window(self):
+        product = create_product(self.ctx['company'], name='Yogurt', sku='YOGURT-API', cost_price=Decimal('5.00'))
+        create_batch(product, self.ctx['branch'], batch_number='EN-10', initial_quantity=3, expiration_date=self.today + timedelta(days=10))
+        admin_user, _ = self._make_admin()
+        self._auth(admin_user)
+
+        default_response = self.client.get('/api/v1/reports/near-expiry-stock/')
+        self.assertEqual(default_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(default_response.data, [])  # fuera de los 7 días default
+
+        wide_response = self.client.get('/api/v1/reports/near-expiry-stock/', {'days': 15})
+        self.assertEqual(wide_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(wide_response.data), 1)
+        self.assertEqual(wide_response.data[0]['days_to_expire'], 10)
 
     def _make_admin(self):
         from tenants.tests.factories import create_user_with_profile

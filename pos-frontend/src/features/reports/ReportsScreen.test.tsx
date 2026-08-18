@@ -15,6 +15,7 @@ const BASE = import.meta.env.VITE_API_BASE_URL
 const BRANCHES_URL = `${BASE}/branches/`
 const SALES_BY_PRODUCT_URL = `${BASE}/reports/sales-by-product/`
 const INVENTORY_VALUATION_URL = `${BASE}/reports/inventory-valuation/`
+const NEAR_EXPIRY_URL = `${BASE}/reports/near-expiry-stock/`
 
 function renderReportsScreen(closeReports = vi.fn()) {
   const auth = fakeAuthValue({ profile: makeProfile({ role: 'ADMINISTRADOR' }) })
@@ -108,6 +109,31 @@ describe('ReportsScreen', () => {
 
     await user.click(screen.getByRole('button', { name: t.reports.back }))
     expect(closeReports).toHaveBeenCalledTimes(1)
+  })
+
+  it('punto 4: "Próximos a caducar" usa un filtro de días, no de fechas, y lo manda como query param', async () => {
+    let capturedDays: string | null = null
+    server.use(
+      http.get(BRANCHES_URL, () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+      http.get(SALES_BY_PRODUCT_URL, () => HttpResponse.json([])),
+      http.get(NEAR_EXPIRY_URL, ({ request }) => {
+        capturedDays = new URL(request.url).searchParams.get('days')
+        return HttpResponse.json([
+          { batch_id: 1, batch_number: 'L-1', product_id: 1, product_name: 'Yogurt natural 1L', branch_id: 1, branch_name: 'Centro', expiration_date: '2026-08-25', days_to_expire: 3, quantity: 4, valuation: '20.00' },
+        ])
+      }),
+    )
+
+    const user = userEvent.setup()
+    renderReportsScreen()
+    await screen.findByText(t.reports.empty)
+
+    await user.click(screen.getByRole('button', { name: t.reports.tabNearExpiry }))
+
+    expect(await screen.findByText('Yogurt natural 1L')).toBeInTheDocument()
+    expect(screen.queryByLabelText(t.reports.dateFrom)).not.toBeInTheDocument()
+    expect(screen.getByLabelText(t.reports.daysWindow)).toBeInTheDocument()
+    expect(capturedDays).toBe('7')
   })
 
   it('si el backend rechaza (403, sin rol de administrador), muestra el mensaje humano y no rompe la pantalla', async () => {

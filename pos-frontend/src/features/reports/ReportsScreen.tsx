@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AppHeader } from '@/components/app-header'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -14,6 +14,7 @@ import {
   getCashShiftClosures,
   getExpiredStock,
   getInventoryValuation,
+  getNearExpiryStock,
   getSalesByCashier,
   getSalesByCategory,
   getSalesByProduct,
@@ -23,19 +24,21 @@ import type {
   CashShiftClosureRow,
   ExpiredStockRow,
   InventoryValuationRow,
+  NearExpiryStockRow,
   SalesByCashierRow,
   SalesByCategoryRow,
   SalesByProductRow,
 } from '@/types/api'
 
-type ReportKey = 'product' | 'category' | 'cashier' | 'inventory' | 'expired' | 'closures'
+type ReportKey = 'product' | 'category' | 'cashier' | 'inventory' | 'expired' | 'near-expiry' | 'closures'
 
-const TABS: { key: ReportKey; label: string; usesDateRange: boolean }[] = [
+const TABS: { key: ReportKey; label: string; usesDateRange: boolean; usesDaysWindow?: boolean }[] = [
   { key: 'product', label: t.reports.tabSalesByProduct, usesDateRange: true },
   { key: 'category', label: t.reports.tabSalesByCategory, usesDateRange: true },
   { key: 'cashier', label: t.reports.tabSalesByCashier, usesDateRange: true },
   { key: 'inventory', label: t.reports.tabInventoryValuation, usesDateRange: false },
   { key: 'expired', label: t.reports.tabExpiredStock, usesDateRange: false },
+  { key: 'near-expiry', label: t.reports.tabNearExpiry, usesDateRange: false, usesDaysWindow: true },
   { key: 'closures', label: t.reports.tabCashShiftClosures, usesDateRange: true },
 ]
 
@@ -55,6 +58,7 @@ type ReportData =
   | { key: 'cashier'; rows: SalesByCashierRow[] }
   | { key: 'inventory'; rows: InventoryValuationRow[] }
   | { key: 'expired'; rows: ExpiredStockRow[] }
+  | { key: 'near-expiry'; rows: NearExpiryStockRow[] }
   | { key: 'closures'; rows: CashShiftClosureRow[] }
 
 export function ReportsScreen() {
@@ -64,6 +68,7 @@ export function ReportsScreen() {
   const [dateTo, setDateTo] = useState(todayIso())
   const [branches, setBranches] = useState<Branch[]>([])
   const [branchId, setBranchId] = useState<number | null>(null)
+  const [nearExpiryDays, setNearExpiryDays] = useState(7)
   const [data, setData] = useState<ReportData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -72,7 +77,13 @@ export function ReportsScreen() {
     listBranches().then(setBranches)
   }, [])
 
-  const runQuery = useCallback(async () => {
+  // Función normal, no useCallback con deps fijos a propósito: así
+  // siempre cierra sobre el dateFrom/dateTo/branchId/nearExpiryDays MÁS
+  // RECIENTE del render actual (tanto el click de "Aplicar filtros" como
+  // el useEffect de abajo la llaman) — con useCallback([activeReport])
+  // el botón "Aplicar filtros" habría usado valores de filtro viejos si
+  // no se cambiaba de pestaña antes de aplicarlos.
+  async function runQuery() {
     setLoading(true)
     setError(null)
     try {
@@ -93,6 +104,9 @@ export function ReportsScreen() {
         case 'expired':
           setData({ key: 'expired', rows: await getExpiredStock({ branchId }) })
           break
+        case 'near-expiry':
+          setData({ key: 'near-expiry', rows: await getNearExpiryStock({ branchId, days: nearExpiryDays }) })
+          break
         case 'closures':
           setData({ key: 'closures', rows: await getCashShiftClosures(filters) })
           break
@@ -103,12 +117,14 @@ export function ReportsScreen() {
     } finally {
       setLoading(false)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeReport])
+  }
 
   useEffect(() => {
     void runQuery()
-  }, [runQuery])
+    // Deliberado: solo re-consulta automático al cambiar de pestaña, no
+    // en cada tecla de fecha/sucursal (para eso está "Aplicar filtros").
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeReport])
 
   const activeTab = TABS.find((tab) => tab.key === activeReport)!
 
@@ -155,6 +171,20 @@ export function ReportsScreen() {
                   <Input id="date-to" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
                 </div>
               </>
+            )}
+
+            {activeTab.usesDaysWindow && (
+              <div>
+                <Label htmlFor="days-window">{t.reports.daysWindow}</Label>
+                <Input
+                  id="days-window"
+                  type="number"
+                  min={1}
+                  max={365}
+                  value={nearExpiryDays}
+                  onChange={(e) => setNearExpiryDays(Number(e.target.value) || 7)}
+                />
+              </div>
             )}
 
             <div>
@@ -212,6 +242,8 @@ function ReportTable({ data }: { data: ReportData }) {
       return <InventoryValuationTable rows={data.rows} />
     case 'expired':
       return <ExpiredStockTable rows={data.rows} />
+    case 'near-expiry':
+      return <NearExpiryStockTable rows={data.rows} />
     case 'closures':
       return <CashShiftClosuresTable rows={data.rows} />
   }
@@ -324,6 +356,41 @@ function ExpiredStockTable({ rows }: { rows: ExpiredStockRow[] }) {
             <td className="px-3 py-2">{row.batch_number}</td>
             <td className="px-3 py-2">{row.branch_name}</td>
             <td className="px-3 py-2">{formatDate(row.expiration_date)}</td>
+            <td className="px-3 py-2">{row.quantity}</td>
+            <td className="px-3 py-2">{formatCurrency(row.valuation)}</td>
+          </tr>
+        ))}
+      </TableShell>
+      <p className="mt-4 text-xl font-bold text-ink">
+        {t.reports.total}: {formatCurrency(total)}
+      </p>
+    </>
+  )
+}
+
+function NearExpiryStockTable({ rows }: { rows: NearExpiryStockRow[] }) {
+  const total = rows.reduce((sum, row) => sum + Number(row.valuation), 0)
+  return (
+    <>
+      <p className="mb-4 text-lg text-ink/70">{t.reports.nearExpiryNote}</p>
+      <TableShell
+        headers={[
+          t.reports.colProduct,
+          t.reports.colBatch,
+          t.reports.colBranch,
+          t.reports.colExpirationDate,
+          t.reports.colDaysToExpire,
+          t.reports.colQuantity,
+          t.reports.colValuation,
+        ]}
+      >
+        {rows.map((row) => (
+          <tr key={row.batch_id} className="border-b border-border">
+            <td className="px-3 py-2">{row.product_name}</td>
+            <td className="px-3 py-2">{row.batch_number}</td>
+            <td className="px-3 py-2">{row.branch_name}</td>
+            <td className="px-3 py-2">{formatDate(row.expiration_date)}</td>
+            <td className="px-3 py-2 font-semibold text-warning">{row.days_to_expire}</td>
             <td className="px-3 py-2">{row.quantity}</td>
             <td className="px-3 py-2">{formatCurrency(row.valuation)}</td>
           </tr>

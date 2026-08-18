@@ -3,6 +3,7 @@ import type {
   CashShiftClosureRow,
   ExpiredStockRow,
   InventoryValuationRow,
+  NearExpiryStockRow,
   SalesByCashierRow,
   SalesByCategoryRow,
   SalesByProductRow,
@@ -53,6 +54,18 @@ export async function getInventoryValuation(filters: BranchOnlyReportFilters): P
 export async function getExpiredStock(filters: BranchOnlyReportFilters): Promise<ExpiredStockRow[]> {
   const response = await apiClient.get<ExpiredStockRow[]>('/reports/expired-stock/', {
     params: { ...branchParam(filters.branchId) },
+  })
+  return response.data
+}
+
+export interface NearExpiryReportFilters {
+  branchId?: number | null
+  days: number
+}
+
+export async function getNearExpiryStock(filters: NearExpiryReportFilters): Promise<NearExpiryStockRow[]> {
+  const response = await apiClient.get<NearExpiryStockRow[]>('/reports/near-expiry-stock/', {
+    params: { days: filters.days, ...branchParam(filters.branchId) },
   })
   return response.data
 }

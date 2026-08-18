@@ -7,6 +7,7 @@ from reports import services
 from reports.serializers import (
     BranchOnlyReportQuerySerializer,
     DateRangeReportQuerySerializer,
+    NearExpiryReportQuerySerializer,
     SalesByProductQuerySerializer,
 )
 from tenants.models import Branch, UserProfile
@@ -90,6 +91,24 @@ class ExpiredStockReportView(APIView):
             return error_response
 
         rows = services.expired_stock_report(company=request.user.profile.company, branch=branch)
+        return Response(rows)
+
+
+class NearExpiryStockReportView(APIView):
+    permission_classes = [IsAuthenticated, IsAdministratorOrSupervisor]
+
+    def get(self, request):
+        query = NearExpiryReportQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        data = query.validated_data
+
+        branch, error_response = _resolve_branch(request, data.get('branch'))
+        if error_response is not None:
+            return error_response
+
+        rows = services.near_expiry_stock_report(
+            company=request.user.profile.company, days=data['days'], branch=branch,
+        )
         return Response(rows)
 
 

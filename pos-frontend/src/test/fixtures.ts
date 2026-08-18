@@ -116,6 +116,7 @@ export function makeProduct(overrides: Partial<Product> = {}): Product {
     tax_rate: '16.00',
     min_stock: 0,
     image: null,
+    nearest_batch_expiration: null,
     company: 1,
     ...overrides,
   }

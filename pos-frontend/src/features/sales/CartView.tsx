@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/button'
 import { formatCurrency } from '@/lib/format'
+import { isNearExpiry } from '@/lib/expiry'
 import { t } from '@/i18n'
 import { allowsFractionalQuantity, lineTotal, type CartLine } from '@/features/sales/cart'
 
@@ -25,7 +26,14 @@ export function CartView({ lines, onChangeQuantity, onRemove }: CartViewProps) {
             className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border-2 border-border bg-white px-5 py-4"
           >
             <div className="min-w-40 flex-1">
-              <p className="text-xl font-medium text-ink">{line.product.name}</p>
+              <p className="flex items-center gap-2 text-xl font-medium text-ink">
+                {line.product.name}
+                {isNearExpiry(line.product.nearest_batch_expiration) && (
+                  <span className="rounded-full border border-warning bg-warning-bg px-3 py-1 text-sm font-semibold text-warning">
+                    {t.sale.nearExpiryBadge}
+                  </span>
+                )}
+              </p>
               <p className="text-lg text-ink/60">{formatCurrency(line.product.sale_price)} c/u</p>
             </div>
 

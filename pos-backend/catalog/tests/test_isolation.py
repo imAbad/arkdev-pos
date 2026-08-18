@@ -1,7 +1,10 @@
 """Aislamiento multi-tenant para catalog — mismo estándar que tenants/sales:
 manager directo, API real, y el vector de IDOR vía FK cruzado (un tenant
 pasando el id de una category/supplier/product ajena)."""
+from datetime import timedelta
+
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -152,3 +155,40 @@ class ProductSearchApiTests(APITestCase):
         response = self.client.get('/api/v1/products/?search=leche')
         ids = [row['id'] for row in response.data['results']]
         self.assertEqual(ids, [self.leche.id])
+
+
+class ProductNearestBatchExpirationTests(APITestCase):
+    """Punto 4: el aviso de caducidad próxima en el buscador de venta viene
+    de este campo — se prueba aquí, en el mismo endpoint que ProductSearch
+    usa de verdad, no en un endpoint aparte."""
+
+    def setUp(self):
+        self.tenant = create_full_tenant('Abarrotes Don Chuy', 'Centro', 'admin@donchuy.test')
+        self.product = create_product(self.tenant['company'], name='Yogurt', sku='YOG-1')
+        self.today = timezone.localdate()
+
+    def _auth(self, user):
+        self.client.force_authenticate(user=user)
+
+    def test_reports_the_soonest_expiring_batch_with_stock(self):
+        create_batch(self.product, self.tenant['branch'], batch_number='LEJANO', initial_quantity=5, expiration_date=self.today + timedelta(days=20))
+        create_batch(self.product, self.tenant['branch'], batch_number='CERCANO', initial_quantity=5, expiration_date=self.today + timedelta(days=3))
+
+        self._auth(self.tenant['user'])
+        response = self.client.get(f'/api/v1/products/{self.product.id}/')
+        self.assertEqual(response.data['nearest_batch_expiration'], self.today + timedelta(days=3))
+
+    def test_ignores_expired_and_sold_out_batches(self):
+        create_batch(self.product, self.tenant['branch'], batch_number='VENCIDO', initial_quantity=5, expiration_date=self.today - timedelta(days=1))
+        sold_out = create_batch(self.product, self.tenant['branch'], batch_number='AGOTADO', initial_quantity=5, expiration_date=self.today + timedelta(days=2))
+        sold_out.current_quantity = 0
+        sold_out.save(update_fields=['current_quantity'])
+
+        self._auth(self.tenant['user'])
+        response = self.client.get(f'/api/v1/products/{self.product.id}/')
+        self.assertIsNone(response.data['nearest_batch_expiration'])
+
+    def test_null_when_product_has_no_batches(self):
+        self._auth(self.tenant['user'])
+        response = self.client.get(f'/api/v1/products/{self.product.id}/')
+        self.assertIsNone(response.data['nearest_batch_expiration'])

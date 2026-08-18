@@ -234,4 +234,29 @@ describe('SaleScreen', () => {
     await screen.findByText(t.confirmation.title)
     expect(callCount).toBe(1)
   })
+
+  it('punto 4: muestra el aviso de "caduca pronto" en el buscador y en el carrito para un producto con lote próximo a caducar', async () => {
+    const inTreeDays = new Date()
+    inTreeDays.setDate(inTreeDays.getDate() + 3)
+    const yogurtNearExpiry = makeProduct({
+      id: 3, name: 'Yogurt natural 1L', sku: 'YOG-1L',
+      nearest_batch_expiration: inTreeDays.toISOString().slice(0, 10),
+    })
+    mockSearch({ refresco: [REFRESCO], yogurt: [yogurtNearExpiry] })
+
+    const user = userEvent.setup()
+    renderWithAuth(<SaleScreen shift={makeShift()} />)
+
+    // Un producto SIN lote próximo a caducar no muestra el aviso:
+    await addProductToCart(user, 'refresco', 'Refresco de cola 600ml')
+    expect(screen.queryByText(t.sale.nearExpiryBadge)).not.toBeInTheDocument()
+
+    // Uno CON lote próximo a caducar sí, tanto en el buscador como en el carrito:
+    await user.type(screen.getByLabelText(t.sale.searchLabel), 'yogurt')
+    await screen.findByRole('button', { name: /Yogurt natural 1L/ })
+    expect(screen.getByText(t.sale.nearExpiryBadge)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /Yogurt natural 1L/ }))
+    await waitFor(() => expect(screen.getAllByText(t.sale.nearExpiryBadge)).toHaveLength(1))
+  })
 })

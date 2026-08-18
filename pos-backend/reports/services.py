@@ -13,6 +13,8 @@ Cada función recibe `company` ya resuelta (el caller la saca del profile
 del usuario autenticado) — ninguna de estas consultas vuelve a filtrar por
 tenant más allá de eso, ya viene acotado desde aquí.
 """
+from datetime import timedelta
+
 from django.db.models import DecimalField, ExpressionWrapper, F, Sum, Value
 from django.db.models.functions import Coalesce
 from django.utils import timezone
@@ -128,6 +130,41 @@ def expired_stock_report(*, company, branch=None):
             'branch_id': batch.branch_id,
             'branch_name': batch.branch.name,
             'expiration_date': batch.expiration_date,
+            'quantity': batch.current_quantity,
+            'valuation': valuation,
+        })
+    return rows
+
+
+def near_expiry_stock_report(*, company, days=7, branch=None):
+    """Punto 4: visibilidad de lo que está por caducar (todavía vigente,
+    no vencido — eso es expired_stock_report) para que un administrador
+    decida promoción antes de que se convierta en merma. `days` es la
+    ventana desde hoy (inclusive), configurable — 7 por default. No
+    incluye lotes ya caducados (esos van en expired_stock_report, no se
+    duplica aquí) ni lotes sin stock."""
+    today = timezone.localdate()
+    limit = today + timedelta(days=days)
+    qs = Batch.objects.filter(
+        company=company, current_quantity__gt=0, expiration_date__gte=today, expiration_date__lte=limit,
+    )
+    if branch is not None:
+        qs = qs.filter(branch=branch)
+
+    qs = qs.select_related('product', 'branch').order_by('expiration_date')
+
+    rows = []
+    for batch in qs:
+        valuation = batch.current_quantity * batch.product.cost_price
+        rows.append({
+            'batch_id': batch.id,
+            'batch_number': batch.batch_number,
+            'product_id': batch.product_id,
+            'product_name': batch.product.name,
+            'branch_id': batch.branch_id,
+            'branch_name': batch.branch.name,
+            'expiration_date': batch.expiration_date,
+            'days_to_expire': (batch.expiration_date - today).days,
             'quantity': batch.current_quantity,
             'valuation': valuation,
         })

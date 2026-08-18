@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { Input } from '@/components/ui/input'
 import { formatCurrency } from '@/lib/format'
+import { isNearExpiry } from '@/lib/expiry'
 import { searchProducts } from '@/services/api/catalogApi'
 import { t } from '@/i18n'
 import type { Product } from '@/types/api'
@@ -80,7 +81,14 @@ export function ProductSearch({ onSelect }: ProductSearchProps) {
                 onClick={() => handlePick(product)}
                 className="flex w-full items-center justify-between rounded-2xl border-2 border-border bg-white px-5 py-4 text-left hover:bg-surface-muted"
               >
-                <span className="text-xl font-medium text-ink">{product.name}</span>
+                <span className="flex items-center gap-3">
+                  <span className="text-xl font-medium text-ink">{product.name}</span>
+                  {isNearExpiry(product.nearest_batch_expiration) && (
+                    <span className="rounded-full border border-warning bg-warning-bg px-3 py-1 text-sm font-semibold text-warning">
+                      {t.sale.nearExpiryBadge}
+                    </span>
+                  )}
+                </span>
                 <span className="text-xl font-bold text-ink">{formatCurrency(product.sale_price)}</span>
               </button>
             </li>
