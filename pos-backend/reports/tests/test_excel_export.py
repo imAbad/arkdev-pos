@@ -14,7 +14,9 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from audit.models import AuditLog
-from catalog.tests.factories import create_batch
+from catalog.models import InventoryAdjustment
+from catalog.services import adjust_batch_stock
+from catalog.tests.factories import create_batch, create_product
 from reports.excel import build_excel_response, build_multi_sheet_excel_response
 from sales.services import close_shift
 from sales.tests.factories import create_checkout_context, make_sale
@@ -171,6 +173,24 @@ class ReportExcelExportApiTests(APITestCase):
         self.assertIn('Ventas (total)', summary_header)
         payments_rows = list(workbook['Pagos por método'].iter_rows(values_only=True))
         self.assertEqual(payments_rows[1][0], 'Efectivo')
+
+    def test_inventory_adjustments_export_returns_an_xlsx_file(self):
+        product = create_product(self.ctx['company'], sku='ADJ-XLSX', requires_batch=True)
+        batch = create_batch(product, self.ctx['branch'], initial_quantity=10)
+        adjust_batch_stock(
+            batch=batch, quantity_delta=-2, reason=InventoryAdjustment.Reason.DAMAGE, actor=self.admin,
+        )
+        self._auth(self.admin)
+
+        response = self.client.get(
+            '/api/v1/reports/inventory-adjustments/', {'date_from': self.today, 'date_to': self.today, 'export': 'xlsx'},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        workbook = load_workbook(BytesIO(response.content))
+        rows = list(workbook.active.iter_rows(values_only=True))
+        self.assertEqual(rows[0], ('Producto', 'Lote', 'Sucursal', 'Ajuste', 'Antes', 'Después', 'Motivo', 'Detalle', 'Quién', 'Cuándo'))
+        self.assertEqual(rows[1][0], product.name)
+        self.assertEqual(rows[1][6], 'Merma/rotura')
 
     def test_export_requires_the_same_access_as_viewing(self):
         # Mismo gate que las 4 vistas ya prueban para JSON

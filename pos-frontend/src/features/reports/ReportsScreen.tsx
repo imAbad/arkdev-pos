@@ -12,6 +12,7 @@ import {
   exportCashShiftClosures,
   exportCashShiftDetail,
   exportExpiredStock,
+  exportInventoryAdjustments,
   exportInventoryValuation,
   exportSalesByCashier,
   exportSalesByCategory,
@@ -19,6 +20,7 @@ import {
   getCashShiftClosures,
   getCashShiftDetail,
   getExpiredStock,
+  getInventoryAdjustments,
   getInventoryValuation,
   getNearExpiryStock,
   getSalesByCashier,
@@ -30,6 +32,7 @@ import type {
   CashShiftClosureRow,
   CashShiftDetail,
   ExpiredStockRow,
+  InventoryAdjustmentReportRow,
   InventoryValuationRow,
   NearExpiryStockRow,
   SalesByCashierRow,
@@ -37,7 +40,9 @@ import type {
   SalesByProductRow,
 } from '@/types/api'
 
-type ReportKey = 'product' | 'category' | 'cashier' | 'inventory' | 'expired' | 'near-expiry' | 'closures' | 'shift-detail'
+type ReportKey =
+  | 'product' | 'category' | 'cashier' | 'inventory' | 'expired' | 'near-expiry' | 'closures' | 'shift-detail'
+  | 'inventory-adjustments'
 
 const TABS: { key: ReportKey; label: string; usesDateRange: boolean; usesDaysWindow?: boolean }[] = [
   { key: 'product', label: t.reports.tabSalesByProduct, usesDateRange: true },
@@ -50,6 +55,10 @@ const TABS: { key: ReportKey; label: string; usesDateRange: boolean; usesDaysWin
   // Drill-down de UN turno de la lista de arriba — mismo filtro de
   // fecha/sucursal para elegirlo, no un reemplazo de "Cierres de caja".
   { key: 'shift-detail', label: t.reports.tabShiftDetail, usesDateRange: true },
+  // Observación de sesión (ronda de 4 piezas, punto 4): motivo de cada
+  // ajuste manual de stock — aparte de "Mermas por caducidad" (esa es
+  // por edad del lote, no una intervención humana con motivo variado).
+  { key: 'inventory-adjustments', label: t.reports.tabInventoryAdjustments, usesDateRange: true },
 ]
 
 type ReportData =
@@ -61,6 +70,7 @@ type ReportData =
   | { key: 'near-expiry'; rows: NearExpiryStockRow[] }
   | { key: 'closures'; rows: CashShiftClosureRow[] }
   | { key: 'shift-detail'; rows: CashShiftClosureRow[] }
+  | { key: 'inventory-adjustments'; rows: InventoryAdjustmentReportRow[] }
 
 export function ReportsScreen() {
   const [activeReport, setActiveReport] = useState<ReportKey>('product')
@@ -123,6 +133,9 @@ export function ReportsScreen() {
         case 'shift-detail':
           setData({ key: 'shift-detail', rows: await getCashShiftClosures(filters) })
           break
+        case 'inventory-adjustments':
+          setData({ key: 'inventory-adjustments', rows: await getInventoryAdjustments(filters) })
+          break
       }
     } catch (err) {
       setError(apiErrorMessage(err, t.reports.errorGeneric))
@@ -143,6 +156,7 @@ export function ReportsScreen() {
     inventory: () => exportInventoryValuation({ branchId }),
     expired: () => exportExpiredStock({ branchId }),
     closures: () => exportCashShiftClosures({ dateFrom, dateTo, branchId }),
+    'inventory-adjustments': () => exportInventoryAdjustments({ dateFrom, dateTo, branchId }),
   }
 
   async function handleExport() {
@@ -348,6 +362,8 @@ function ReportTable({ data }: { data: ReportData }) {
       return <NearExpiryStockTable rows={data.rows} />
     case 'closures':
       return <CashShiftClosuresTable rows={data.rows} />
+    case 'inventory-adjustments':
+      return <InventoryAdjustmentsTable rows={data.rows} />
   }
 }
 
@@ -539,6 +555,35 @@ function CashShiftClosuresTable({ rows }: { rows: CashShiftClosureRow[] }) {
           <td className={cn('px-3 py-2 font-semibold', Number(row.voucher_difference) === 0 ? 'text-confirm' : 'text-cancel')}>
             {formatCurrency(row.voucher_difference)}
           </td>
+        </tr>
+      ))}
+    </TableShell>
+  )
+}
+
+function InventoryAdjustmentsTable({ rows }: { rows: InventoryAdjustmentReportRow[] }) {
+  return (
+    <TableShell
+      headers={[
+        t.reports.colProduct, t.reports.colBatch, t.reports.colBranch, t.reports.colAdjustment,
+        t.reports.colQuantityBefore, t.reports.colQuantityAfter, t.reports.colReason, t.reports.colReasonDetail,
+        t.reports.colWho, t.reports.colDateTime,
+      ]}
+    >
+      {rows.map((row) => (
+        <tr key={row.id} className="border-b border-border">
+          <td className="px-3 py-2">{row.product_name}</td>
+          <td className="px-3 py-2">{row.batch_number}</td>
+          <td className="px-3 py-2">{row.branch_name}</td>
+          <td className={cn('px-3 py-2 font-semibold', row.quantity_delta < 0 ? 'text-cancel' : 'text-confirm')}>
+            {row.quantity_delta > 0 ? `+${row.quantity_delta}` : row.quantity_delta}
+          </td>
+          <td className="px-3 py-2">{row.quantity_before}</td>
+          <td className="px-3 py-2">{row.quantity_after}</td>
+          <td className="px-3 py-2">{row.reason_label}</td>
+          <td className="px-3 py-2">{row.reason_detail || '—'}</td>
+          <td className="px-3 py-2">{row.user_email ?? '—'}</td>
+          <td className="px-3 py-2">{formatDateTime(row.created_at)}</td>
         </tr>
       ))}
     </TableShell>

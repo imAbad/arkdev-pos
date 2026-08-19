@@ -20,7 +20,7 @@ from django.db.models import DecimalField, ExpressionWrapper, F, Sum, Value
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
-from catalog.models import Batch
+from catalog.models import Batch, InventoryAdjustment
 from customers.models import CreditMovement
 from sales.models import CashShift, Payment, Sale, SaleDetail
 
@@ -301,3 +301,36 @@ def sales_summary_by_payment_method(*, company, date_from, date_to, branch=None)
 
     qs = qs.values('method').annotate(total=Sum('amount')).order_by('-total')
     return list(qs)
+
+
+def inventory_adjustments(*, company, date_from, date_to, branch=None):
+    """Observación de sesión (ronda de 4 piezas, punto 4): ajustes
+    manuales de stock con su motivo — reporte aparte de
+    expired_stock_report ("Mermas por caducidad"), que es un concepto
+    distinto (lotes YA vencidos por edad, detectado por el sistema, no
+    una intervención humana con una razón variada). Mezclarlos habría
+    confundido dos causas de merma que no se explican igual."""
+    qs = InventoryAdjustment.objects.filter(
+        company=company, created_at__date__gte=date_from, created_at__date__lte=date_to,
+    )
+    if branch is not None:
+        qs = qs.filter(batch__branch=branch)
+
+    qs = qs.select_related('batch__product', 'batch__branch', 'user').order_by('-created_at')
+
+    rows = []
+    for adjustment in qs:
+        rows.append({
+            'id': adjustment.id,
+            'product_name': adjustment.batch.product.name,
+            'batch_number': adjustment.batch.batch_number,
+            'branch_name': adjustment.batch.branch.name,
+            'quantity_delta': adjustment.quantity_delta,
+            'quantity_before': adjustment.quantity_before,
+            'quantity_after': adjustment.quantity_after,
+            'reason_label': adjustment.get_reason_display(),
+            'reason_detail': adjustment.reason_detail,
+            'user_email': adjustment.user.email,
+            'created_at': adjustment.created_at,
+        })
+    return rows

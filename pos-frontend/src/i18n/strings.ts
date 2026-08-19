@@ -237,6 +237,15 @@ export const es = {
     colClient: 'Cliente',
     colAmount: 'Monto',
     colDateTime: 'Fecha y hora',
+    // Observación de sesión (ronda de 4 piezas, punto 4): motivo de cada
+    // ajuste manual de stock — reporte aparte de "Mermas por caducidad".
+    tabInventoryAdjustments: 'Ajustes de inventario',
+    colAdjustment: 'Ajuste',
+    colQuantityBefore: 'Antes',
+    colQuantityAfter: 'Después',
+    colReason: 'Motivo',
+    colReasonDetail: 'Detalle',
+    colWho: 'Quién',
   },
   modules: {
     navLink: 'Módulos',
@@ -393,6 +402,17 @@ export const es = {
     addingBatch: 'Agregando…',
     batchErrorGeneric: 'No se pudo agregar el lote. Intenta de nuevo.',
     currentStock: 'Existencia actual',
+    // Observación de sesión (ronda de 4 piezas, punto 4): no existía
+    // NINGÚN ajuste manual de stock — ni modelo, ni endpoint, ni
+    // frontend. Motivo obligatorio desde el día uno.
+    adjustStock: 'Ajustar',
+    adjustQuantityDelta: 'Ajuste (+/-)',
+    adjustQuantityDeltaPlaceholder: 'ej. -3 o 5',
+    adjustReason: 'Motivo',
+    adjustReasonDetail: 'Describe brevemente el motivo',
+    adjustSave: 'Guardar ajuste',
+    adjustSaving: 'Guardando…',
+    adjustErrorGeneric: 'No se pudo guardar el ajuste. Intenta de nuevo.',
   },
 } as const
 

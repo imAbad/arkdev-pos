@@ -62,6 +62,15 @@ _SHIFT_DETAIL_SUMMARY_COLUMNS = [
 _SHIFT_DETAIL_PAYMENTS_COLUMNS = [('Método', 'method_label'), ('Total', 'total')]
 _SHIFT_DETAIL_CREDIT_COLUMNS = [('Cliente', 'client_name'), ('Monto', 'amount'), ('Fecha', 'created_at')]
 
+# Observación de sesión (ronda de 4 piezas, punto 4): ajustes manuales de
+# stock con su motivo — reporte aparte de "Mermas por caducidad" (ver
+# reports.services.inventory_adjustments).
+_INVENTORY_ADJUSTMENTS_COLUMNS = [
+    ('Producto', 'product_name'), ('Lote', 'batch_number'), ('Sucursal', 'branch_name'),
+    ('Ajuste', 'quantity_delta'), ('Antes', 'quantity_before'), ('Después', 'quantity_after'),
+    ('Motivo', 'reason_label'), ('Detalle', 'reason_detail'), ('Quién', 'user_email'), ('Cuándo', 'created_at'),
+]
+
 
 def _wants_excel(request):
     # OJO: no se llama `format` a propósito — DRF reserva ese nombre de
@@ -295,4 +304,37 @@ class SalesByPaymentMethodReportView(APIView):
             date_to=data['date_to'],
             branch=branch,
         )
+        return Response(rows)
+
+
+class InventoryAdjustmentsReportView(APIView):
+    """Observación de sesión (ronda de 4 piezas, punto 4): visibilidad del
+    motivo detrás de cada ajuste manual de stock — sin esto el motivo
+    quedaba enterrado solo en la base de datos."""
+
+    permission_classes = [IsAuthenticated, IsAdministratorOrSupervisor]
+
+    def get(self, request):
+        query = DateRangeReportQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        data = query.validated_data
+
+        branch, error_response = _resolve_branch(request, data.get('branch'))
+        if error_response is not None:
+            return error_response
+
+        rows = services.inventory_adjustments(
+            company=request.user.profile.company,
+            date_from=data['date_from'],
+            date_to=data['date_to'],
+            branch=branch,
+        )
+        if _wants_excel(request):
+            _log_export(request, 'ajustes-de-inventario', {
+                'date_from': str(data['date_from']), 'date_to': str(data['date_to']),
+                'branch': branch.name if branch else None,
+            })
+            return build_excel_response(
+                filename='ajustes-de-inventario.xlsx', columns=_INVENTORY_ADJUSTMENTS_COLUMNS, rows=rows,
+            )
         return Response(rows)

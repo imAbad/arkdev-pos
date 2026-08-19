@@ -9,6 +9,8 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
+from catalog.models import InventoryAdjustment
+from catalog.services import adjust_batch_stock
 from catalog.tests.factories import create_batch, create_category, create_product
 from customers.models import CreditMovement
 from customers.services import pay_credit
@@ -353,6 +355,104 @@ class CashShiftDetailApiTests(APITestCase):
         close_shift(shift=self.ctx['shift'], closing_user=self.ctx['user'], actual_closing_balance=Decimal('0'))
         self._auth(self.ctx['user'])  # handles_cash=True, sin can_authorize_exceptions
         response = self.client.get('/api/v1/reports/cash-shift-detail/', {'shift': self.ctx['shift'].id})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class InventoryAdjustmentsReportServiceTests(TestCase):
+    """Observación de sesión (ronda de 4 piezas, punto 4): el motivo de
+    cada ajuste manual de stock debe verse en algún reporte, no quedar
+    enterrado solo en la base de datos."""
+
+    def setUp(self):
+        self.ctx = create_checkout_context()
+        self.today = timezone.localdate()
+
+    def test_lists_adjustments_with_reason_and_who(self):
+        product = create_product(self.ctx['company'], sku='ADJ-1', requires_batch=True)
+        batch = create_batch(product, self.ctx['branch'], initial_quantity=10)
+        adjust_batch_stock(
+            batch=batch, quantity_delta=-3, reason=InventoryAdjustment.Reason.DAMAGE, actor=self.ctx['user'],
+        )
+
+        rows = services.inventory_adjustments(company=self.ctx['company'], date_from=self.today, date_to=self.today)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['product_name'], product.name)
+        self.assertEqual(rows[0]['quantity_delta'], -3)
+        self.assertEqual(rows[0]['quantity_before'], 10)
+        self.assertEqual(rows[0]['quantity_after'], 7)
+        self.assertEqual(rows[0]['reason_label'], 'Merma/rotura')
+        self.assertEqual(rows[0]['user_email'], self.ctx['user'].email)
+
+    def test_other_reason_includes_the_free_text_detail(self):
+        product = create_product(self.ctx['company'], sku='ADJ-2', requires_batch=True)
+        batch = create_batch(product, self.ctx['branch'], initial_quantity=5)
+        adjust_batch_stock(
+            batch=batch, quantity_delta=-1, reason=InventoryAdjustment.Reason.OTHER,
+            actor=self.ctx['user'], reason_detail='Se mojó en bodega',
+        )
+
+        rows = services.inventory_adjustments(company=self.ctx['company'], date_from=self.today, date_to=self.today)
+        self.assertEqual(rows[0]['reason_detail'], 'Se mojó en bodega')
+
+    def test_excludes_adjustments_outside_the_date_range(self):
+        product = create_product(self.ctx['company'], sku='ADJ-3', requires_batch=True)
+        batch = create_batch(product, self.ctx['branch'], initial_quantity=10)
+        adjust_batch_stock(
+            batch=batch, quantity_delta=-1, reason=InventoryAdjustment.Reason.DAMAGE, actor=self.ctx['user'],
+        )
+
+        rows = services.inventory_adjustments(
+            company=self.ctx['company'],
+            date_from=self.today - timedelta(days=10),
+            date_to=self.today - timedelta(days=1),
+        )
+        self.assertEqual(rows, [])
+
+    def test_excludes_adjustments_from_a_different_branch(self):
+        other_ctx = create_checkout_context('Otra tienda', 'Sur', 'otra@sur.test')
+        product = create_product(other_ctx['company'], sku='ADJ-4', requires_batch=True)
+        batch = create_batch(product, other_ctx['branch'], initial_quantity=10)
+        adjust_batch_stock(
+            batch=batch, quantity_delta=-1, reason=InventoryAdjustment.Reason.DAMAGE, actor=other_ctx['user'],
+        )
+
+        rows = services.inventory_adjustments(
+            company=other_ctx['company'], date_from=self.today, date_to=self.today, branch=self.ctx['branch'],
+        )
+        self.assertEqual(rows, [])
+
+
+class InventoryAdjustmentsReportApiTests(APITestCase):
+    def setUp(self):
+        self.ctx = create_checkout_context()
+        self.today = timezone.localdate()
+        self.admin, _ = create_user_with_profile(
+            'admin@donchuy.test', self.ctx['branch'], role=UserProfile.Role.ADMINISTRADOR,
+        )
+
+    def _auth(self, user):
+        self.client.force_authenticate(user=user)
+
+    def test_administrador_can_read_the_report(self):
+        product = create_product(self.ctx['company'], sku='ADJ-API-1', requires_batch=True)
+        batch = create_batch(product, self.ctx['branch'], initial_quantity=10)
+        adjust_batch_stock(
+            batch=batch, quantity_delta=-2, reason=InventoryAdjustment.Reason.COUNT_CORRECTION, actor=self.admin,
+        )
+        self._auth(self.admin)
+
+        response = self.client.get(
+            '/api/v1/reports/inventory-adjustments/', {'date_from': self.today, 'date_to': self.today},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['reason_label'], 'Corrección de conteo')
+
+    def test_plain_cajero_is_denied(self):
+        self._auth(self.ctx['user'])
+        response = self.client.get(
+            '/api/v1/reports/inventory-adjustments/', {'date_from': self.today, 'date_to': self.today},
+        )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
 

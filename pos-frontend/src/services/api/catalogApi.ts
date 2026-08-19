@@ -92,3 +92,17 @@ export async function createBatch(input: BatchInput): Promise<Batch> {
   const response = await apiClient.post<Batch>('/batches/', input)
   return response.data
 }
+
+export interface InventoryAdjustmentInput {
+  quantity_delta: number
+  reason: InventoryAdjustmentReason
+  reason_detail?: string
+}
+
+// Observación de sesión (ronda de 4 piezas, punto 4): único camino para
+// cambiar current_quantity fuera de una venta — motivo obligatorio, ver
+// catalog.models.InventoryAdjustment/catalog.services.adjust_batch_stock.
+export async function adjustBatchStock(batchId: number, input: InventoryAdjustmentInput): Promise<InventoryAdjustment> {
+  const response = await apiClient.post<InventoryAdjustment>(`/batches/${batchId}/adjust/`, input)
+  return response.data
+}

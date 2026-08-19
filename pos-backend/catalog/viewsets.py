@@ -1,8 +1,18 @@
-from rest_framework import filters, viewsets
+from rest_framework import filters, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 
 from catalog.models import Batch, Category, Product, Supplier
-from catalog.serializers import BatchSerializer, CategorySerializer, ProductSerializer, SupplierSerializer
+from catalog.serializers import (
+    BatchSerializer,
+    CategorySerializer,
+    InventoryAdjustmentInputSerializer,
+    InventoryAdjustmentSerializer,
+    ProductSerializer,
+    SupplierSerializer,
+)
+from catalog.services import InventoryAdjustmentError, adjust_batch_stock
 from core.mixins import TenantScopedViewSetMixin
 from core.permissions import IsAdministratorOrReadOnly, IsAdministratorOrSupervisor
 
@@ -66,3 +76,23 @@ class BatchViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
         if product_id:
             qs = qs.filter(product_id=product_id)
         return qs
+
+    @action(detail=True, methods=['post'])
+    def adjust(self, request, pk=None):
+        # Observación de sesión (ronda de 4 piezas, punto 4): único camino
+        # para cambiar current_quantity fuera de una venta —
+        # BatchSerializer lo deja de solo lectura a propósito (ver
+        # catalog.models.InventoryAdjustment). Motivo obligatorio, sin
+        # excepción: no se puede llamar a esta acción sin él.
+        batch = self.get_object()
+        input_serializer = InventoryAdjustmentInputSerializer(data=request.data)
+        input_serializer.is_valid(raise_exception=True)
+        data = input_serializer.validated_data
+        try:
+            adjustment = adjust_batch_stock(
+                batch=batch, quantity_delta=data['quantity_delta'], reason=data['reason'],
+                reason_detail=data.get('reason_detail', ''), actor=request.user,
+            )
+        except InventoryAdjustmentError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(InventoryAdjustmentSerializer(adjustment).data, status=status.HTTP_201_CREATED)

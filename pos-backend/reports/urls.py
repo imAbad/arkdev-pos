@@ -4,6 +4,7 @@ from reports.views import (
     CashShiftClosuresReportView,
     CashShiftDetailReportView,
     ExpiredStockReportView,
+    InventoryAdjustmentsReportView,
     InventoryValuationReportView,
     NearExpiryStockReportView,
     SalesByPaymentMethodReportView,
@@ -21,6 +22,11 @@ urlpatterns = [
     path('reports/near-expiry-stock/', NearExpiryStockReportView.as_view(), name='report-near-expiry-stock'),
     path('reports/cash-shift-closures/', CashShiftClosuresReportView.as_view(), name='report-cash-shift-closures'),
     path('reports/cash-shift-detail/', CashShiftDetailReportView.as_view(), name='report-cash-shift-detail'),
+    path(
+        'reports/inventory-adjustments/',
+        InventoryAdjustmentsReportView.as_view(),
+        name='report-inventory-adjustments',
+    ),
     path(
         'reports/sales-by-payment-method/',
         SalesByPaymentMethodReportView.as_view(),

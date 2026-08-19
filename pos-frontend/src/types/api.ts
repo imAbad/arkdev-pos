@@ -148,6 +148,27 @@ export interface Batch {
   company: number
 }
 
+export type InventoryAdjustmentReason = 'DAMAGE' | 'EXPIRATION' | 'THEFT' | 'COUNT_CORRECTION' | 'OTHER'
+
+// Observación de sesión (ronda de 4 piezas, punto 4): único registro de
+// por qué se ajustó stock manualmente — ver
+// catalog.models.InventoryAdjustment.
+export interface InventoryAdjustment {
+  id: number
+  batch: number
+  product_name: string
+  batch_number: string
+  quantity_delta: number
+  quantity_before: number
+  quantity_after: number
+  reason: InventoryAdjustmentReason
+  reason_label: string
+  reason_detail: string
+  user_email: string | null
+  created_at: string
+  company: number
+}
+
 export interface LowStockRow {
   product_id: number
   product_name: string
@@ -330,4 +351,20 @@ export interface CashShiftDetail {
   payments_by_method: CashShiftPaymentByMethod[]
   credit_payments: CashShiftCreditPayment[]
   credit_payments_total: string
+}
+
+// Observación de sesión (ronda de 4 piezas, punto 4): fila del reporte
+// "Ajustes de inventario" — ver reports.services.inventory_adjustments.
+export interface InventoryAdjustmentReportRow {
+  id: number
+  product_name: string
+  batch_number: string
+  branch_name: string
+  quantity_delta: number
+  quantity_before: number
+  quantity_after: number
+  reason_label: string
+  reason_detail: string
+  user_email: string | null
+  created_at: string
 }

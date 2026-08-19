@@ -1,7 +1,7 @@
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import userEvent from '@testing-library/user-event'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { AuthContext } from '@/features/auth/AuthProvider'
 import { fakeAuthValue } from '@/test/test-utils'
 import { server } from '@/test/server'
@@ -150,5 +150,61 @@ describe('InventoryScreen', () => {
     await user.click(screen.getByRole('button', { name: t.inventory.addBatch }))
 
     expect(capturedBody).toMatchObject({ product: 1, branch: 1, batch_number: 'L-NUEVO', initial_quantity: 10 })
+  })
+
+  it('punto 4: ajusta stock con un motivo obligatorio y refresca lotes + catálogo', async () => {
+    mockCatalog()
+    const existingBatch = {
+      id: 5, product: 1, branch: 1, batch_number: 'L-1', initial_quantity: 20,
+      current_quantity: 20, expiration_date: '2030-01-01', received_date: '2026-08-18', company: 1,
+    }
+    server.use(http.get(BATCHES_URL, () => HttpResponse.json(paginated([existingBatch]))))
+    let capturedBody: unknown = null
+    server.use(
+      http.post(`${BASE}/batches/5/adjust/`, async ({ request }) => {
+        capturedBody = await request.json()
+        return HttpResponse.json({
+          id: 1, batch: 5, product_name: 'Yogurt natural 1L', batch_number: 'L-1',
+          quantity_delta: -3, quantity_before: 20, quantity_after: 17,
+          reason: 'DAMAGE', reason_label: 'Merma/rotura', reason_detail: '', user_email: 'admin@donchuy.test',
+          created_at: '2026-08-18T12:00:00Z', company: 1,
+        })
+      }),
+    )
+    const user = userEvent.setup()
+    renderScreen(makeProfile({ role: 'ADMINISTRADOR' }))
+
+    await screen.findByText('Yogurt natural 1L')
+    await user.click(screen.getByRole('button', { name: t.inventory.colBatches }))
+    await screen.findByText('L-1')
+
+    await user.click(screen.getByRole('button', { name: t.inventory.adjustStock }))
+    await user.type(screen.getByLabelText(t.inventory.adjustQuantityDelta), '-3')
+    await user.selectOptions(screen.getByLabelText(t.inventory.adjustReason), 'DAMAGE')
+    await user.click(screen.getByRole('button', { name: t.inventory.adjustSave }))
+
+    await waitFor(() => expect(capturedBody).toMatchObject({ quantity_delta: -3, reason: 'DAMAGE' }))
+  })
+
+  it('punto 4: el motivo "Otro" pide describir la razón', async () => {
+    mockCatalog()
+    const existingBatch = {
+      id: 5, product: 1, branch: 1, batch_number: 'L-1', initial_quantity: 20,
+      current_quantity: 20, expiration_date: '2030-01-01', received_date: '2026-08-18', company: 1,
+    }
+    server.use(http.get(BATCHES_URL, () => HttpResponse.json(paginated([existingBatch]))))
+    const user = userEvent.setup()
+    renderScreen(makeProfile({ role: 'ADMINISTRADOR' }))
+
+    await screen.findByText('Yogurt natural 1L')
+    await user.click(screen.getByRole('button', { name: t.inventory.colBatches }))
+    await screen.findByText('L-1')
+    await user.click(screen.getByRole('button', { name: t.inventory.adjustStock }))
+
+    expect(screen.queryByLabelText(t.inventory.adjustReasonDetail)).not.toBeInTheDocument()
+
+    await user.selectOptions(screen.getByLabelText(t.inventory.adjustReason), 'OTHER')
+
+    expect(screen.getByLabelText(t.inventory.adjustReasonDetail)).toBeRequired()
   })
 })

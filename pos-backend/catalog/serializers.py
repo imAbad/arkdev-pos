@@ -2,7 +2,7 @@ from django.db.models import Sum
 from django.utils import timezone
 from rest_framework import serializers
 
-from catalog.models import Batch, Category, Product, Supplier
+from catalog.models import Batch, Category, InventoryAdjustment, Product, Supplier
 from core.serializers import TenantScopedFieldsMixin
 
 
@@ -106,3 +106,28 @@ class BatchSerializer(TenantScopedFieldsMixin, serializers.ModelSerializer):
             'current_quantity', 'expiration_date', 'received_date', 'company',
         ]
         read_only_fields = ['current_quantity', 'received_date', 'company']
+
+
+class InventoryAdjustmentInputSerializer(serializers.Serializer):
+    """Input de BatchViewSet.adjust — motivo obligatorio, `reason_detail`
+    solo se exige de verdad si reason='OTHER' (validado en
+    catalog.services.adjust_batch_stock, no aquí)."""
+
+    quantity_delta = serializers.IntegerField()
+    reason = serializers.ChoiceField(choices=InventoryAdjustment.Reason.choices)
+    reason_detail = serializers.CharField(max_length=200, required=False, allow_blank=True, default='')
+
+
+class InventoryAdjustmentSerializer(serializers.ModelSerializer):
+    reason_label = serializers.CharField(source='get_reason_display', read_only=True)
+    product_name = serializers.CharField(source='batch.product.name', read_only=True)
+    batch_number = serializers.CharField(source='batch.batch_number', read_only=True)
+    user_email = serializers.CharField(source='user.email', read_only=True)
+
+    class Meta:
+        model = InventoryAdjustment
+        fields = [
+            'id', 'batch', 'product_name', 'batch_number', 'quantity_delta', 'quantity_before',
+            'quantity_after', 'reason', 'reason_label', 'reason_detail', 'user_email', 'created_at', 'company',
+        ]
+        read_only_fields = fields

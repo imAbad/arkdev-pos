@@ -3,6 +3,7 @@ import type {
   CashShiftClosureRow,
   CashShiftDetail,
   ExpiredStockRow,
+  InventoryAdjustmentReportRow,
   InventoryValuationRow,
   NearExpiryStockRow,
   SalesByCashierRow,
@@ -153,4 +154,22 @@ export async function exportCashShiftClosures(filters: DateRangeReportFilters): 
 
 export async function exportCashShiftDetail(shiftId: number): Promise<void> {
   await downloadExcel('/reports/cash-shift-detail/', { shift: shiftId }, 'cierre-de-turno-detallado.xlsx')
+}
+
+// Observación de sesión (ronda de 4 piezas, punto 4): motivo de cada
+// ajuste manual de stock — sin esto quedaba enterrado solo en la base de
+// datos.
+export async function getInventoryAdjustments(filters: DateRangeReportFilters): Promise<InventoryAdjustmentReportRow[]> {
+  const response = await apiClient.get<InventoryAdjustmentReportRow[]>('/reports/inventory-adjustments/', {
+    params: { date_from: filters.dateFrom, date_to: filters.dateTo, ...branchParam(filters.branchId) },
+  })
+  return response.data
+}
+
+export async function exportInventoryAdjustments(filters: DateRangeReportFilters): Promise<void> {
+  await downloadExcel(
+    '/reports/inventory-adjustments/',
+    { date_from: filters.dateFrom, date_to: filters.dateTo, ...branchParam(filters.branchId) },
+    'ajustes-de-inventario.xlsx',
+  )
 }

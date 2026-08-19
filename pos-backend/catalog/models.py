@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 from django.utils import timezone
 from django.utils.text import slugify
@@ -178,3 +179,57 @@ class Batch(BaseTenantModel):
 
     def __str__(self):
         return f'{self.product.name} · lote {self.batch_number}'
+
+
+class InventoryAdjustment(BaseTenantModel):
+    """Observación de sesión (ronda de 4 piezas, punto 4): reportado como
+    "el ajuste manual de stock del punto 8" pero, al revisar el código,
+    ese ajuste nunca se construyó — `StockTransfer`/`InventoryAdjustment`
+    seguían listados como "pendientes de construir" en
+    arquitectura_tecnica_pos.md §3, y `BatchSerializer` deja
+    `current_quantity` de solo lectura a propósito (nada podía cambiarlo
+    fuera de una venta). Este modelo es la construcción real, con motivo
+    obligatorio desde el día uno — no un campo agregado después a algo
+    que ya guardaba sin él.
+
+    `batch` (no `product`) a propósito: el stock real vive en
+    Batch.current_quantity (ver Product.requires_batch) — un ajuste sin
+    lote no tendría ningún número que modificar, mismo hallazgo que ya
+    limita catalog.services.low_stock_products/ProductSerializer.
+    current_stock a productos con requires_batch=True.
+    """
+
+    class Reason(models.TextChoices):
+        DAMAGE = 'DAMAGE', 'Merma/rotura'
+        EXPIRATION = 'EXPIRATION', 'Caducidad no capturada por lote'
+        THEFT = 'THEFT', 'Robo/faltante'
+        COUNT_CORRECTION = 'COUNT_CORRECTION', 'Corrección de conteo'
+        OTHER = 'OTHER', 'Otro'
+
+    batch = models.ForeignKey(Batch, on_delete=models.PROTECT, related_name='adjustments')
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='inventory_adjustments',
+    )
+    # Positivo o negativo — no solo bajas: una corrección de conteo puede
+    # descubrir MÁS stock del registrado, no solo menos.
+    quantity_delta = models.IntegerField()
+    # Congelados al momento del ajuste (igual que SaleDetail.tax_rate_applied
+    # congela la tasa vigente) — una auditoría posterior no debe depender
+    # de recalcular contra el estado actual del lote, que ya cambió.
+    quantity_before = models.PositiveIntegerField()
+    quantity_after = models.PositiveIntegerField()
+    reason = models.CharField(max_length=20, choices=Reason.choices)
+    # Solo se exige que traiga texto cuando reason='OTHER' — validado en
+    # catalog.services.adjust_batch_stock, no aquí (blank=True a nivel de
+    # columna porque para el resto de motivos es opcional).
+    reason_detail = models.CharField(max_length=200, blank=True)
+
+    class Meta(BaseTenantModel.Meta):
+        ordering = ['-created_at']
+
+    def save(self, *args, **kwargs):
+        self.company_id = self.batch.company_id
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f'Ajuste {self.batch.product.name} {self.quantity_delta:+d} · {self.get_reason_display()}'

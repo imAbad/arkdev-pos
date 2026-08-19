@@ -8,6 +8,7 @@ import { formatCurrency, formatDate } from '@/lib/format'
 import { useAuth } from '@/features/auth/AuthProvider'
 import { isAdministrator, isAdministratorOrSupervisor } from '@/lib/permissions'
 import {
+  adjustBatchStock,
   createBatch,
   createProduct,
   listAllProducts,
@@ -18,7 +19,15 @@ import {
   type ProductInput,
 } from '@/services/api/catalogApi'
 import { t } from '@/i18n'
-import type { Batch, Category, Product, Supplier, UnitType } from '@/types/api'
+import type { Batch, Category, InventoryAdjustmentReason, Product, Supplier, UnitType } from '@/types/api'
+
+const ADJUSTMENT_REASON_OPTIONS: { value: InventoryAdjustmentReason; label: string }[] = [
+  { value: 'DAMAGE', label: 'Merma/rotura' },
+  { value: 'EXPIRATION', label: 'Caducidad no capturada por lote' },
+  { value: 'THEFT', label: 'Robo/faltante' },
+  { value: 'COUNT_CORRECTION', label: 'Corrección de conteo' },
+  { value: 'OTHER', label: 'Otro' },
+]
 
 const UNIT_OPTIONS: { value: UnitType; label: string }[] = [
   { value: 'PIEZA', label: 'Pieza' },
@@ -130,7 +139,7 @@ export function InventoryScreen() {
         />
       )}
       {panel?.type === 'batches' && branch && (
-        <BatchesPanel product={panel.product} branchId={branch.id} onClose={() => setPanel(null)} />
+        <BatchesPanel product={panel.product} branchId={branch.id} onClose={() => setPanel(null)} onAdjusted={load} />
       )}
 
       {!error && products === null && <p className="text-lg text-ink/70">{t.inventory.loading}</p>}
@@ -357,19 +366,36 @@ function ProductForm({
   )
 }
 
-function BatchesPanel({ product, branchId, onClose }: { product: Product; branchId: number; onClose: () => void }) {
+function BatchesPanel({
+  product,
+  branchId,
+  onClose,
+  onAdjusted,
+}: {
+  product: Product
+  branchId: number
+  onClose: () => void
+  onAdjusted: () => void
+}) {
   const [batches, setBatches] = useState<Batch[] | null>(null)
   const [batchNumber, setBatchNumber] = useState('')
   const [initialQuantity, setInitialQuantity] = useState('0')
   const [expirationDate, setExpirationDate] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [adjustingBatchId, setAdjustingBatchId] = useState<number | null>(null)
 
   function load() {
     listBatchesForProduct(product.id).then(setBatches)
   }
 
   useEffect(load, [product.id])
+
+  function handleAdjusted() {
+    setAdjustingBatchId(null)
+    load()
+    onAdjusted()
+  }
 
   async function handleAddBatch(event: React.FormEvent) {
     event.preventDefault()
@@ -412,11 +438,24 @@ function BatchesPanel({ product, branchId, onClose }: { product: Product; branch
       ) : (
         <ul className="mt-4 flex flex-col gap-2">
           {batches.map((batch) => (
-            <li key={batch.id} className="flex items-center justify-between rounded-xl border-2 border-border px-4 py-3">
-              <span className="text-lg text-ink">{batch.batch_number}</span>
-              <span className="text-lg text-ink/70">
-                {t.inventory.currentStock}: {batch.current_quantity} · {formatDate(batch.expiration_date)}
-              </span>
+            <li key={batch.id} className="rounded-xl border-2 border-border px-4 py-3">
+              <div className="flex items-center justify-between">
+                <span className="text-lg text-ink">{batch.batch_number}</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-lg text-ink/70">
+                    {t.inventory.currentStock}: {batch.current_quantity} · {formatDate(batch.expiration_date)}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="neutral"
+                    size="compact"
+                    onClick={() => setAdjustingBatchId(adjustingBatchId === batch.id ? null : batch.id)}
+                  >
+                    {t.inventory.adjustStock}
+                  </Button>
+                </div>
+              </div>
+              {adjustingBatchId === batch.id && <AdjustStockForm batch={batch} onAdjusted={handleAdjusted} />}
             </li>
           ))}
         </ul>
@@ -460,5 +499,89 @@ function BatchesPanel({ product, branchId, onClose }: { product: Product; branch
         </p>
       )}
     </Card>
+  )
+}
+
+/** Observación de sesión (ronda de 4 piezas, punto 4): único formulario
+ * para cambiar current_quantity fuera de una venta — motivo obligatorio,
+ * sin excepción (ver catalog.services.adjust_batch_stock). No dejaba
+ * guardar sin motivo: el select no tiene opción vacía y el input de
+ * "Otro" es requerido solo cuando se elige ese motivo. */
+function AdjustStockForm({ batch, onAdjusted }: { batch: Batch; onAdjusted: () => void }) {
+  const [quantityDelta, setQuantityDelta] = useState('')
+  const [reason, setReason] = useState<InventoryAdjustmentReason>('DAMAGE')
+  const [reasonDetail, setReasonDetail] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault()
+    setSaving(true)
+    setError(null)
+    try {
+      await adjustBatchStock(batch.id, {
+        quantity_delta: Number(quantityDelta) || 0,
+        reason,
+        reason_detail: reasonDetail,
+      })
+      onAdjusted()
+    } catch (err) {
+      setError(apiErrorMessage(err, t.inventory.adjustErrorGeneric))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={(e) => void handleSubmit(e)} className="mt-3 flex flex-wrap items-end gap-4 border-t-2 border-border pt-3">
+      <div>
+        <Label htmlFor={`adjust-delta-${batch.id}`}>{t.inventory.adjustQuantityDelta}</Label>
+        <Input
+          id={`adjust-delta-${batch.id}`}
+          type="number"
+          step="1"
+          required
+          placeholder={t.inventory.adjustQuantityDeltaPlaceholder}
+          value={quantityDelta}
+          onChange={(e) => setQuantityDelta(e.target.value)}
+        />
+      </div>
+      <div>
+        <Label htmlFor={`adjust-reason-${batch.id}`}>{t.inventory.adjustReason}</Label>
+        <select
+          id={`adjust-reason-${batch.id}`}
+          required
+          className="h-16 rounded-2xl border-2 border-border bg-white px-5 text-xl text-ink"
+          value={reason}
+          onChange={(e) => setReason(e.target.value as InventoryAdjustmentReason)}
+        >
+          {ADJUSTMENT_REASON_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      {reason === 'OTHER' && (
+        <div>
+          <Label htmlFor={`adjust-detail-${batch.id}`}>{t.inventory.adjustReasonDetail}</Label>
+          <Input
+            id={`adjust-detail-${batch.id}`}
+            required
+            value={reasonDetail}
+            onChange={(e) => setReasonDetail(e.target.value)}
+          />
+        </div>
+      )}
+      <Button type="submit" variant="confirm" disabled={saving}>
+        {saving ? t.inventory.adjustSaving : t.inventory.adjustSave}
+      </Button>
+
+      {error && (
+        <p role="alert" className="w-full text-base font-medium text-cancel">
+          {error}
+        </p>
+      )}
+    </form>
   )
 }

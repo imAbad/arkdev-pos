@@ -17,6 +17,7 @@ const INVENTORY_VALUATION_URL = `${BASE}/reports/inventory-valuation/`
 const NEAR_EXPIRY_URL = `${BASE}/reports/near-expiry-stock/`
 const CASH_SHIFT_CLOSURES_URL = `${BASE}/reports/cash-shift-closures/`
 const CASH_SHIFT_DETAIL_URL = `${BASE}/reports/cash-shift-detail/`
+const INVENTORY_ADJUSTMENTS_URL = `${BASE}/reports/inventory-adjustments/`
 
 // jsdom no implementa createObjectURL/revokeObjectURL — se agregan al
 // URL real (no se reemplaza el global: axios usa `new URL(...)` para
@@ -241,6 +242,35 @@ describe('ReportsScreen — Cierre de turno detallado (drill-down de un turno)',
     await user.click(await screen.findByRole('button', { name: t.reports.shiftDetailViewDetail }))
 
     expect(await screen.findByText(t.reports.shiftDetailNoCreditPayments)).toBeInTheDocument()
+  })
+})
+
+describe('ReportsScreen — Ajustes de inventario (punto 4: motivo visible, no enterrado en la BD)', () => {
+  it('lista los ajustes con motivo, cantidad y quién', async () => {
+    server.use(
+      http.get(BRANCHES_URL, () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+      http.get(SALES_BY_PRODUCT_URL, () => HttpResponse.json([])),
+      http.get(INVENTORY_ADJUSTMENTS_URL, () =>
+        HttpResponse.json([
+          {
+            id: 1, product_name: 'Yogurt natural 1L', batch_number: 'L-1', branch_name: 'Centro',
+            quantity_delta: -3, quantity_before: 20, quantity_after: 17,
+            reason_label: 'Merma/rotura', reason_detail: '', user_email: 'admin@donchuy.test',
+            created_at: '2026-08-18T12:00:00Z',
+          },
+        ]),
+      ),
+    )
+    const user = userEvent.setup()
+    renderReportsScreen()
+    await screen.findByText(t.reports.empty)
+
+    await user.click(screen.getByRole('button', { name: t.reports.tabInventoryAdjustments }))
+
+    expect(await screen.findByText('Yogurt natural 1L')).toBeInTheDocument()
+    expect(screen.getByText('-3')).toBeInTheDocument()
+    expect(screen.getByText('Merma/rotura')).toBeInTheDocument()
+    expect(screen.getByText('admin@donchuy.test')).toBeInTheDocument()
   })
 })
 
