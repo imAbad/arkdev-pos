@@ -52,7 +52,15 @@ describe('UserManagementScreen', () => {
     expect(within(cajeroRow).getByText(t.users.statusActive)).toBeInTheDocument()
   })
 
-  it('crea un usuario nuevo con el formulario', async () => {
+  it('la fila de un usuario sin correo muestra un guion, no vacío ni error', async () => {
+    mockLists([ADMIN_PROFILE, { ...CAJERO_PROFILE, email: null }])
+    renderScreen()
+
+    const cajeroRow = (await screen.findByText('cajero1')).closest('tr')!
+    expect(within(cajeroRow).getByText('—')).toBeInTheDocument()
+  })
+
+  it('crea un usuario nuevo con el formulario (username + email opcional)', async () => {
     mockLists()
     let createdBody: unknown = null
     server.use(
@@ -70,9 +78,9 @@ describe('UserManagementScreen', () => {
     renderScreen()
     await screen.findByText('admin@donchuy.test')
 
-    await userEvent.type(screen.getByLabelText(t.users.email), 'nuevo@donchuy.test')
-    await userEvent.type(screen.getByLabelText(t.users.password), 'ClaveSegura2026!')
     await userEvent.type(screen.getByLabelText(t.users.username), 'nuevo_cajero')
+    await userEvent.type(screen.getByLabelText(t.users.password), 'ClaveSegura2026!')
+    await userEvent.type(screen.getByLabelText(t.users.email), 'nuevo@donchuy.test')
     fireEvent.change(screen.getByLabelText(t.users.dateOfBirth), { target: { value: '1998-06-20' } })
     await userEvent.selectOptions(screen.getByLabelText(t.users.branch), '1')
     await userEvent.click(screen.getByLabelText(t.users.handlesCash))
@@ -84,22 +92,48 @@ describe('UserManagementScreen', () => {
     })
   })
 
-  it('muestra un error legible cuando la creación falla (ej. correo duplicado)', async () => {
+  it('crea un usuario nuevo dejando el correo en blanco — username es el único identificador obligatorio', async () => {
     mockLists()
+    let createdBody: Record<string, unknown> | null = null
     server.use(
-      http.post(USERS_URL, () => HttpResponse.json({ detail: 'Ya existe un usuario con este correo.' }, { status: 400 })),
+      http.post(USERS_URL, async ({ request }) => {
+        createdBody = (await request.json()) as Record<string, unknown>
+        return HttpResponse.json(
+          {
+            id: 100, email: null, username: 'solo_username', is_active: true, branch: 1,
+            role: 'CAJERO', capabilities: {}, date_of_birth: null, company: 1,
+          },
+          { status: 201 },
+        )
+      }),
     )
     renderScreen()
     await screen.findByText('admin@donchuy.test')
 
-    await userEvent.type(screen.getByLabelText(t.users.email), 'admin@donchuy.test')
+    await userEvent.type(screen.getByLabelText(t.users.username), 'solo_username')
     await userEvent.type(screen.getByLabelText(t.users.password), 'ClaveSegura2026!')
-    await userEvent.type(screen.getByLabelText(t.users.username), 'otro_username')
-    fireEvent.change(screen.getByLabelText(t.users.dateOfBirth), { target: { value: '1998-06-20' } })
     await userEvent.selectOptions(screen.getByLabelText(t.users.branch), '1')
     await userEvent.click(screen.getByRole('button', { name: t.users.create }))
 
-    expect(await screen.findByText('Ya existe un usuario con este correo.')).toBeInTheDocument()
+    expect(await screen.findByText(t.users.createdNotice)).toBeInTheDocument()
+    expect(createdBody).toMatchObject({ username: 'solo_username', branch: 1, role: 'CAJERO' })
+    expect(createdBody).not.toHaveProperty('email')
+  })
+
+  it('muestra un error legible cuando la creación falla (ej. usuario duplicado)', async () => {
+    mockLists()
+    server.use(
+      http.post(USERS_URL, () => HttpResponse.json({ detail: 'Ya existe un usuario con este nombre de usuario.' }, { status: 400 })),
+    )
+    renderScreen()
+    await screen.findByText('admin@donchuy.test')
+
+    await userEvent.type(screen.getByLabelText(t.users.username), 'admin1')
+    await userEvent.type(screen.getByLabelText(t.users.password), 'ClaveSegura2026!')
+    await userEvent.selectOptions(screen.getByLabelText(t.users.branch), '1')
+    await userEvent.click(screen.getByRole('button', { name: t.users.create }))
+
+    expect(await screen.findByText('Ya existe un usuario con este nombre de usuario.')).toBeInTheDocument()
   })
 
   it('desactiva a un usuario activo', async () => {

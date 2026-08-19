@@ -12,11 +12,11 @@ import { t } from '@/i18n'
 
 const TOKEN_URL = `${import.meta.env.VITE_API_BASE_URL}/auth/token/`
 
-async function login(email = 'cajero@donchuy.test', password = 'cajero123') {
+async function login(identifier = 'cajero@donchuy.test', password = 'cajero123') {
   const user = userEvent.setup()
   render(<App />)
   await screen.findByText(t.login.title)
-  await user.type(screen.getByLabelText(t.login.email), email)
+  await user.type(screen.getByLabelText(t.login.identifier), identifier)
   await user.type(screen.getByLabelText(t.login.password), password)
   await user.click(screen.getByRole('button', { name: t.login.submit }))
   return user
@@ -43,7 +43,7 @@ describe('App — login navega a la siguiente pantalla', () => {
     expect(screen.queryByText(/no active account/i)).not.toBeInTheDocument()
     // La pantalla de login sigue ahí y usable, no se rompió:
     expect(screen.getByText(t.login.title)).toBeInTheDocument()
-    expect(screen.getByLabelText(t.login.email)).toBeInTheDocument()
+    expect(screen.getByLabelText(t.login.identifier)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: t.login.submit })).toBeEnabled()
   })
 })

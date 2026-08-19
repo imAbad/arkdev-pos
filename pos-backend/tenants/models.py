@@ -10,30 +10,49 @@ from tenants.managers import UserManager
 
 
 class User(AbstractUser):
-    """Usuario con login por email — no username como identificador
-    principal (CLAUDE.md #3).
+    """Una cuenta, una contraseña, dos identificadores posibles para
+    entrar: `email` y `username`. No son dos mecanismos de auth
+    distintos — el login (ver `tenants.serializers.
+    IdentifierTokenObtainPairSerializer` / `tenants.services.
+    authenticate_by_identifier`) acepta cualquiera de los dos y valida
+    contra la MISMA contraseña real de la cuenta.
 
-    El `username` original de AbstractUser colisionaba entre tenants en
-    pharma_core (ver decisiones_post_auditoria.md #5) — por eso se usa
-    `email` como `USERNAME_FIELD`, sin excepción, sin ningún cambio en
-    este punto.
+    `username` original de AbstractUser: removido a propósito. Colisionaba
+    entre tenants en pharma_core (ver decisiones_post_auditoria.md #5,
+    CLAUDE.md #3) porque era el ÚNICO identificador y único solo por
+    tenant. El `username` de abajo es uno nuevo y deliberadamente
+    distinto: único A NIVEL SISTEMA (mismo principio que `email`, no por
+    tenant, así que no repite ese bug), obligatorio al dar de alta un
+    usuario (ver `UserCreateSerializer`).
 
-    Observación de sesión, punto 5: el `username` de abajo NO es aquel
-    campo resucitado — es uno nuevo y deliberadamente distinto: un alias
-    corto, único A NIVEL SISTEMA (mismo principio que ya usa `email`, no
-    por tenant, así que no repite el bug de pharma_core), solo para un
-    segundo camino de login pensado para el mostrador (ver
-    `request_username_login` en tenants.services y su nota de seguridad
-    ahí). email+contraseña sigue siendo el login real y principal, intacto.
+    `USERNAME_FIELD = 'email'` se mantiene por razones puramente de
+    plomería de Django (`createsuperuser`, `ModelBackend`, admin) — NO
+    determina qué acepta el login real de la API, que vive en
+    `IdentifierTokenObtainPairSerializer` y no pasa por `USERNAME_FIELD`
+    en absoluto. Por eso `email` puede ser opcional aquí: una cuenta
+    dada de alta solo con `username` sigue pudiendo entrar (por
+    username), simplemente no podría entrar por correo porque no tiene.
+
+    Corrección de sesión: una ronda anterior interpretó "login alterno"
+    como un SEGUNDO mecanismo de autenticación independiente (username +
+    fecha de nacimiento, sin contraseña) — eso era un malentendido y se
+    removió por completo (ver `UserProfile.date_of_birth` y el historial
+    de `tenants.services`/`tenants.viewsets`/`config.urls` para lo que
+    ya no existe). `date_of_birth` se conserva solo como dato de perfil,
+    nunca para autenticar.
     """
 
-    email = models.EmailField('email', unique=True)
+    # Opcional: una cuenta puede darse de alta solo con username (caso
+    # típico de mostrador) y entrar sin nunca haber tenido correo.
+    # unique=True + null=True: Postgres no considera NULL igual a NULL,
+    # así que múltiples cuentas sin email conviven sin chocar, pero si
+    # alguien SÍ tiene uno, es único en todo el sistema (mismo criterio
+    # que username, ver abajo).
+    email = models.EmailField('email', unique=True, null=True, blank=True)
 
-    # NULL (no CharField vacío) para usuarios ya existentes antes de este
-    # punto, que entraron por email y nunca configuraron uno — unique=True
-    # con null=True permite múltiples NULL sin chocar entre sí (Postgres
-    # no considera NULL igual a NULL para unicidad), pero si alguien SÍ
-    # define un username, tiene que ser único en todo el sistema.
+    # Igual de único a nivel sistema que email (no por tenant — no repite
+    # el bug de pharma_core), pero a diferencia de email, obligatorio al
+    # dar de alta (ver UserCreateSerializer.username, sin default=False).
     username = models.CharField(max_length=30, unique=True, null=True, blank=True)
 
     USERNAME_FIELD = 'email'
@@ -42,7 +61,7 @@ class User(AbstractUser):
     objects = UserManager()
 
     def __str__(self):
-        return self.email
+        return self.email or self.username or f'user #{self.pk}'
 
 
 class Company(TimeStampedModel):
@@ -121,9 +140,9 @@ class UserProfile(BaseTenantModel):
     )
     role = models.CharField(max_length=20, choices=Role.choices)
     capabilities = models.JSONField(default=dict, blank=True)
-    # Observación de sesión, punto 5: solo se usa para validar el login
-    # alterno por username (ver tenants.services.request_username_login)
-    # — null para perfiles ya existentes que nunca la capturaron.
+    # Dato de perfil administrativo (ej. verificación de identidad en
+    # persona) — NUNCA se usa para autenticar a nadie, no es parte de
+    # ningún flujo de login. Null para perfiles que no lo capturaron.
     date_of_birth = models.DateField(null=True, blank=True)
 
     def save(self, *args, **kwargs):

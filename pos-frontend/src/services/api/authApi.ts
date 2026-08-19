@@ -1,21 +1,13 @@
 import { apiClient } from '@/lib/api-client'
 import type { SupervisorAuthorization, TokenPair } from '@/types/api'
 
-export async function login(email: string, password: string): Promise<TokenPair> {
-  const response = await apiClient.post<TokenPair>('/auth/token/', { email, password })
-  return response.data
-}
-
-/** Punto 5: login alterno de mostrador (usuario + fecha de nacimiento) —
- * devuelve el mismo par de tokens que el login normal, ver
- * tenants.viewsets.UsernameLoginView. Más débil que contraseña a
- * propósito (ver AuthProvider.usernameLoginErrorMessage y
- * arquitectura_tecnica_pos.md §7) — coexiste con login(), no lo reemplaza. */
-export async function loginWithUsername(username: string, dateOfBirth: string): Promise<TokenPair> {
-  const response = await apiClient.post<TokenPair>('/auth/token/username/', {
-    username,
-    date_of_birth: dateOfBirth,
-  })
+/** `identifier` acepta username O email — misma cuenta, misma
+ * contraseña, un solo endpoint (ver tenants.serializers.
+ * IdentifierTokenObtainPairSerializer). No hay una función de login
+ * separada por identificador; quien llama decide qué escribió el
+ * usuario en el único campo del formulario. */
+export async function login(identifier: string, password: string): Promise<TokenPair> {
+  const response = await apiClient.post<TokenPair>('/auth/token/', { identifier, password })
   return response.data
 }
 

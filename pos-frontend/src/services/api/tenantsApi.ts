@@ -56,15 +56,18 @@ export async function listUsers(): Promise<UserProfile[]> {
 }
 
 export interface CreateUserInput {
-  email: string
   password: string
   branch: number
   role: Role
   capabilities?: UserProfile['capabilities']
-  // Punto 5: requeridos al dar de alta — sin los dos, el login alterno
-  // por username nunca podría funcionar para esta persona.
+  // Único identificador obligatorio — sirve por sí solo para entrar
+  // (misma contraseña que si además tuviera email). email/date_of_birth
+  // son opcionales: email como segundo identificador de login si se
+  // quiere, date_of_birth solo como dato de perfil (nunca para
+  // autenticar, ver tenants.models.UserProfile.date_of_birth).
   username: string
-  date_of_birth: string
+  email?: string
+  date_of_birth?: string
 }
 
 export async function createUser(input: CreateUserInput): Promise<UserProfile> {

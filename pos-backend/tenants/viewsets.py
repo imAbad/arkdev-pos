@@ -1,9 +1,9 @@
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.views import TokenObtainPairView
 
 from core.mixins import TenantScopedViewSetMixin
 from core.permissions import IsAdministrator, IsAdministratorOrReadOnly
@@ -11,21 +11,19 @@ from tenants.models import Branch, CompanySettings, UserProfile
 from tenants.serializers import (
     BranchSerializer,
     CompanySettingsSerializer,
+    IdentifierTokenObtainPairSerializer,
     SupervisorAuthorizationRequestSerializer,
     SupervisorAuthorizationSerializer,
     UserCreateSerializer,
-    UsernameLoginInputSerializer,
     UserProfileSerializer,
 )
 from tenants.services import (
     AuthorizationError,
     UserManagementError,
-    UsernameLoginError,
     create_tenant_user,
     deactivate_user,
     reactivate_user,
     request_supervisor_authorization,
-    request_username_login,
 )
 
 
@@ -87,9 +85,9 @@ class UserProfileViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
         data = input_serializer.validated_data
 
         profile = create_tenant_user(
-            email=data['email'], password=data['password'], branch=data['branch'],
+            username=data['username'], password=data['password'], branch=data['branch'],
             role=data['role'], capabilities=data.get('capabilities'), actor=request.user,
-            username=data['username'], date_of_birth=data['date_of_birth'],
+            email=data.get('email') or None, date_of_birth=data.get('date_of_birth'),
         )
         return Response(
             UserProfileSerializer(profile, context={'request': request}).data,
@@ -144,24 +142,12 @@ class RequestSupervisorAuthorizationView(APIView):
         )
 
 
-class UsernameLoginView(APIView):
-    """Punto 5: login alterno de mostrador (username + fecha de
-    nacimiento) — emite el mismo tipo de token que
-    TokenObtainPairView (SimpleJWT), no un sistema de auth paralelo. Sin
-    autenticar (AllowAny): es justo la puerta de entrada, como
-    /auth/token/."""
+class IdentifierTokenObtainPairView(TokenObtainPairView):
+    """El único endpoint de login de la API — reemplaza el
+    TokenObtainPairView estándar de SimpleJWT (que solo aceptaba
+    `USERNAME_FIELD`, o sea email) por uno que acepta username O email
+    como identificador, ambos contra la MISMA contraseña real de la
+    cuenta (ver IdentifierTokenObtainPairSerializer / tenants.services.
+    authenticate_by_identifier). No hay un segundo endpoint de login."""
 
-    permission_classes = [AllowAny]
-
-    def post(self, request):
-        input_serializer = UsernameLoginInputSerializer(data=request.data)
-        input_serializer.is_valid(raise_exception=True)
-        data = input_serializer.validated_data
-
-        try:
-            user = request_username_login(username=data['username'], date_of_birth=data['date_of_birth'])
-        except UsernameLoginError as exc:
-            return Response({'detail': str(exc)}, status=status.HTTP_401_UNAUTHORIZED)
-
-        refresh = RefreshToken.for_user(user)
-        return Response({'access': str(refresh.access_token), 'refresh': str(refresh)})
+    serializer_class = IdentifierTokenObtainPairSerializer

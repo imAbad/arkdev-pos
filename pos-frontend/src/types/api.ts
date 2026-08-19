@@ -24,7 +24,9 @@ export type Role = 'CAJERO' | 'ADMINISTRADOR'
 
 export interface UserProfile {
   id: number
-  email: string
+  // Opcional a nivel de cuenta — username es el único identificador
+  // obligatorio (ver tenants.models.User).
+  email: string | null
   username: string | null
   is_active: boolean
   branch: number

@@ -136,6 +136,37 @@ class CreateTenantUserApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertFalse(User.objects.filter(email='nuevo3@donchuy.test').exists())
 
+    def test_can_create_a_user_without_email(self):
+        # Corrección de sesión: username es el único identificador
+        # obligatorio, email es opcional.
+        self._auth(self.tenant_a['user'])
+        response = self.client.post(
+            '/api/v1/user-profiles/',
+            {
+                'password': 'ClaveSegura2026!', 'branch': self.tenant_a['branch'].id, 'role': 'CAJERO',
+                'username': 'solo_username',
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertIsNone(response.data['email'])
+        created_user = User.objects.get(username='solo_username')
+        self.assertIsNone(created_user.email)
+        self.assertTrue(created_user.check_password('ClaveSegura2026!'))
+
+    def test_rejects_missing_username_with_clean_400(self):
+        self._auth(self.tenant_a['user'])
+        response = self.client.post(
+            '/api/v1/user-profiles/',
+            {
+                'email': 'sinusuario@donchuy.test', 'password': 'ClaveSegura2026!',
+                'branch': self.tenant_a['branch'].id, 'role': 'CAJERO',
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(User.objects.filter(email='sinusuario@donchuy.test').exists())
+
     def test_rejects_a_weak_password_with_clean_400(self):
         self._auth(self.tenant_a['user'])
         response = self.client.post(

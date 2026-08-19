@@ -3,6 +3,7 @@ from datetime import timedelta
 from django.conf import settings
 from django.contrib.auth import authenticate
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from audit.services import log_action
@@ -14,50 +15,25 @@ class AuthorizationError(Exception):
     de supervisor (-> 403)."""
 
 
-class UsernameLoginError(Exception):
-    """Usuario o fecha de nacimiento no coinciden (-> 401)."""
+def authenticate_by_identifier(*, identifier, password):
+    """Resuelve la cuenta por `username` O `email` — son dos
+    identificadores de la MISMA cuenta, no dos mecanismos de auth
+    distintos, así que ambos validan contra la MISMA contraseña real
+    (ver IdentifierTokenObtainPairSerializer, que reemplaza el
+    TokenObtainPairSerializer estándar de SimpleJWT para aceptar
+    cualquiera de los dos en vez de solo `USERNAME_FIELD`).
 
-
-def request_username_login(*, username, date_of_birth):
-    """Login alterno pensado para el mostrador (punto 5 de esta ronda):
-    username + fecha de nacimiento en vez de email + contraseña.
-
-    Nota de seguridad, deliberada y documentada a propósito (no un
-    descuido): este mecanismo es MÁS DÉBIL que contraseña — la fecha de
-    nacimiento es adivinable por alguien cercano a la persona (familia,
-    compañeros de trabajo). Se acepta como decisión consciente de
-    conveniencia para el mostrador, no como reemplazo de seguridad real:
-    la cuenta sigue protegida por su contraseña real para cualquier
-    acción que la requiera (ej. autorizar una excepción de supervisor,
-    sales.services.cancel_sale). No se usa para nada más sensible que
-    entrar a vender.
-
-    Mismo tipo de token que el login normal (SimpleJWT) — no un sistema
-    de auth paralelo, solo una segunda forma de LLEGAR al mismo token.
-    Cada intento se audita (éxito o fallo) cuando hay un tenant real al
-    que atribuirlo — AuditLog.company es NOT NULL (BaseTenantModel), así
-    que un username que no le pertenece a nadie no genera ningún registro
-    (no hay tenant al que asociarlo), pero un usuario real que falla por
-    fecha incorrecta o está inactivo sí queda auditado en su tenant.
+    Devuelve el User si las credenciales son válidas y la cuenta está
+    activa, None en cualquier otro caso (identificador inexistente,
+    password incorrecto, cuenta inactiva) — sin distinguir el motivo en
+    la respuesta pública, mismo criterio que el login por email de
+    siempre nunca reveló si el problema era el correo o el password.
     """
-    user = User.objects.filter(username__iexact=username).select_related('profile').first()
-
-    def _deny():
-        if user is not None and hasattr(user, 'profile'):
-            log_action(
-                company=user.profile.company, user=user, action='username_login.denied',
-                changes={'username': username},
-            )
-        raise UsernameLoginError('Usuario o fecha de nacimiento incorrectos.')
-
-    if user is None or not hasattr(user, 'profile') or not user.is_active:
-        _deny()
-    if user.profile.date_of_birth is None or user.profile.date_of_birth != date_of_birth:
-        _deny()
-
-    log_action(
-        company=user.profile.company, user=user, action='username_login.granted', changes={'username': username},
-    )
+    if not identifier:
+        return None
+    user = User.objects.filter(Q(email__iexact=identifier) | Q(username__iexact=identifier)).first()
+    if user is None or not user.is_active or not user.check_password(password):
+        return None
     return user
 
 
@@ -66,7 +42,7 @@ class UserManagementError(Exception):
     (-> 400)."""
 
 
-def create_tenant_user(*, email, password, branch, role, capabilities=None, actor=None, username=None, date_of_birth=None):
+def create_tenant_user(*, username, password, branch, role, email=None, capabilities=None, actor=None, date_of_birth=None):
     """Crea el `User` (login) y su `UserProfile` (branch/role/capabilities)
     en una sola transacción — no tiene sentido que exista el uno sin el
     otro (ver UserProfile.save(): company se deriva de branch, así que
@@ -74,10 +50,11 @@ def create_tenant_user(*, email, password, branch, role, capabilities=None, acto
     criterio anti-IDOR que reports._resolve_branch, aplicado vía
     TenantScopedFieldsMixin en el serializer-).
 
-    `username`/`date_of_birth` (punto 5): requeridos por
-    UserCreateSerializer para altas nuevas, pero opcionales aquí a nivel
-    de función — otros callers (seed_demo_data, etc.) no tienen por qué
-    pasarlos."""
+    `username` es el único identificador obligatorio (ver
+    UserCreateSerializer) — `email` es opcional: una cuenta dada de alta
+    sin correo sigue pudiendo entrar por username, simplemente no por
+    correo. `date_of_birth` es un dato de perfil administrativo, sin
+    relación con el login (ver UserProfile.date_of_birth)."""
     with transaction.atomic():
         user = User.objects.create_user(email=email, password=password, username=username)
         profile = UserProfile.objects.create(
@@ -85,7 +62,7 @@ def create_tenant_user(*, email, password, branch, role, capabilities=None, acto
         )
     log_action(
         company=profile.company, user=actor, action='user_management.created',
-        instance=profile, changes={'email': email, 'role': role},
+        instance=profile, changes={'username': username, 'email': email, 'role': role},
     )
     return profile
 

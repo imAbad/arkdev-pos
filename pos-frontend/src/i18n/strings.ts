@@ -21,23 +21,16 @@ export const es = {
   },
   login: {
     title: 'Iniciar sesión',
-    subtitle: 'Ingresa con tu correo y contraseña.',
-    email: 'Correo electrónico',
-    emailPlaceholder: 'tu-correo@tienda.com',
+    subtitle: 'Ingresa con tu usuario o correo y tu contraseña.',
+    // Un solo campo, acepta username O email — misma cuenta, misma
+    // contraseña (ver tenants.serializers.IdentifierTokenObtainPairSerializer).
+    identifier: 'Usuario o correo',
+    identifierPlaceholder: 'tu-usuario o tu-correo@tienda.com',
     password: 'Contraseña',
     submit: 'Entrar',
     submitting: 'Entrando…',
-    errorInvalid: 'Correo o contraseña incorrectos.',
+    errorInvalid: 'Usuario/correo o contraseña incorrectos.',
     errorGeneric: 'No se pudo iniciar sesión. Intenta de nuevo.',
-    // Punto 5: login alterno de mostrador, junto al de correo+contraseña
-    // (ninguno oculta al otro) — ver tenants.services.request_username_login.
-    usernameTab: 'Entrar con usuario',
-    usernameSubtitle: 'Para el mostrador: usuario y fecha de nacimiento.',
-    username: 'Usuario',
-    dateOfBirth: 'Fecha de nacimiento',
-    usernameSubmit: 'Entrar con usuario',
-    usernameErrorInvalid: 'Usuario o fecha de nacimiento incorrectos.',
-    divider: 'o',
   },
   shift: {
     title: 'Abrir turno',
@@ -263,10 +256,13 @@ export const es = {
     deactivateErrorGeneric: 'No se pudo desactivar. Intenta de nuevo.',
     reactivateErrorGeneric: 'No se pudo reactivar. Intenta de nuevo.',
     newUserTitle: 'Nuevo usuario',
-    email: 'Correo',
+    // Corrección de sesión: username es el único identificador
+    // obligatorio (sirve para entrar por sí solo, con la misma
+    // contraseña que el correo) — email es opcional.
+    email: 'Correo (opcional)',
     password: 'Contraseña',
-    username: 'Usuario (para entrar en el mostrador)',
-    dateOfBirth: 'Fecha de nacimiento',
+    username: 'Usuario',
+    dateOfBirth: 'Fecha de nacimiento (opcional)',
     role: 'Rol',
     roleCajero: 'Cajero',
     roleAdministrador: 'Administrador',

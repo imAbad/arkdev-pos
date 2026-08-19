@@ -107,7 +107,7 @@ export function UserManagementScreen() {
               <tbody>
                 {users.map((profile) => (
                   <tr key={profile.id} className="border-b border-border">
-                    <td className="px-3 py-2">{profile.email}</td>
+                    <td className="px-3 py-2">{profile.email ?? '—'}</td>
                     <td className="px-3 py-2">{profile.username ?? '—'}</td>
                     <td className="px-3 py-2">{profile.role === 'ADMINISTRADOR' ? t.users.roleAdministrador : t.users.roleCajero}</td>
                     <td className="px-3 py-2">{branchName(profile.branch)}</td>
@@ -176,13 +176,13 @@ function NewUserForm({ branches, onCreated }: { branches: Branch[]; onCreated: (
     setCreatedNotice(false)
     try {
       await createUser({
-        email,
+        username,
         password,
         branch: branchId,
         role,
         capabilities: { handles_cash: handlesCash, can_authorize_exceptions: canAuthorizeExceptions },
-        username,
-        date_of_birth: dateOfBirth,
+        email: email || undefined,
+        date_of_birth: dateOfBirth || undefined,
       })
       setEmail('')
       setPassword('')
@@ -204,8 +204,13 @@ function NewUserForm({ branches, onCreated }: { branches: Branch[]; onCreated: (
       <h2 className="mb-4 text-2xl font-bold text-ink">{t.users.newUserTitle}</h2>
       <form onSubmit={handleSubmit} className="flex flex-wrap items-end gap-4">
         <div>
-          <Label htmlFor="new-user-email">{t.users.email}</Label>
-          <Input id="new-user-email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+          <Label htmlFor="new-user-username">{t.users.username}</Label>
+          <Input
+            id="new-user-username"
+            required
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+          />
         </div>
         <div>
           <Label htmlFor="new-user-password">{t.users.password}</Label>
@@ -218,20 +223,14 @@ function NewUserForm({ branches, onCreated }: { branches: Branch[]; onCreated: (
           />
         </div>
         <div>
-          <Label htmlFor="new-user-username">{t.users.username}</Label>
-          <Input
-            id="new-user-username"
-            required
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-          />
+          <Label htmlFor="new-user-email">{t.users.email}</Label>
+          <Input id="new-user-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
         </div>
         <div>
           <Label htmlFor="new-user-date-of-birth">{t.users.dateOfBirth}</Label>
           <Input
             id="new-user-date-of-birth"
             type="date"
-            required
             value={dateOfBirth}
             onChange={(e) => setDateOfBirth(e.target.value)}
           />
