@@ -27,8 +27,10 @@ export async function getLowStockProducts(): Promise<LowStockRow[]> {
 // Observación de sesión, punto 2: pantalla de Inventario — el backend
 // (categorías/proveedores/productos/lotes) ya existía completo desde el
 // punto 8, solo faltaba que el frontend lo consumiera.
-export async function listAllProducts(): Promise<Product[]> {
-  const response = await apiClient.get<Paginated<Product>>('/products/', { params: { page_size: 500 } })
+export async function listAllProducts(branchId?: number): Promise<Product[]> {
+  const response = await apiClient.get<Paginated<Product>>('/products/', {
+    params: { page_size: 500, ...(branchId ? { branch: branchId } : {}) },
+  })
   return response.data.results
 }
 

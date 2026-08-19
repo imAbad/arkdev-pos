@@ -47,6 +47,38 @@ describe('InventoryScreen', () => {
     expect(screen.getByText('YOG-1')).toBeInTheDocument()
   })
 
+  it('muestra el stock actual sumado de lotes para un producto con control por lote', async () => {
+    mockCatalog([makeProduct({ id: 1, name: 'Yogurt natural 1L', sku: 'YOG-1', requires_batch: true, current_stock: 23 })])
+    renderScreen(makeProfile({ role: 'ADMINISTRADOR' }))
+
+    await screen.findByText('Yogurt natural 1L')
+    expect(screen.getByText('23')).toBeInTheDocument()
+  })
+
+  it('muestra un guion (no 0) para un producto sin control por lote — no se rastrea existencia', async () => {
+    mockCatalog([makeProduct({ id: 1, name: 'Bolsa de mandado', sku: 'BOLSA-1', requires_batch: false, current_stock: null })])
+    renderScreen(makeProfile({ role: 'ADMINISTRADOR' }))
+
+    await screen.findByText('Bolsa de mandado')
+    expect(screen.getByTitle(t.inventory.stockNotTracked)).toHaveTextContent('—')
+  })
+
+  it('pide el catálogo escopado a la sucursal de la sesión', async () => {
+    let capturedBranch: string | null = null
+    server.use(
+      http.get(PRODUCTS_URL, ({ request }) => {
+        capturedBranch = new URL(request.url).searchParams.get('branch')
+        return HttpResponse.json(paginated([YOGURT]))
+      }),
+      http.get(CATEGORIES_URL, () => HttpResponse.json(paginated([{ id: 1, name: 'Básicos', slug: 'basicos', is_active: true, company: 1 }]))),
+      http.get(SUPPLIERS_URL, () => HttpResponse.json(paginated([]))),
+    )
+    renderScreen(makeProfile({ role: 'ADMINISTRADOR' }))
+
+    await screen.findByText('Yogurt natural 1L')
+    expect(capturedBranch).toBe('1')
+  })
+
   it('el buscador filtra por nombre, sku o categoría', async () => {
     mockCatalog([YOGURT, makeProduct({ id: 2, name: 'Refresco de cola 600ml', sku: 'REF-600', category: 1 })])
     const user = userEvent.setup()

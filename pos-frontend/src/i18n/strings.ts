@@ -341,6 +341,8 @@ export const es = {
     colCategory: 'Categoría',
     colCost: 'Costo',
     colPrice: 'Precio',
+    colCurrentStock: 'Stock actual',
+    stockNotTracked: 'No se rastrea existencia para este producto (no usa control por lote).',
     colMinStock: 'Stock mínimo',
     colBatches: 'Lotes',
     edit: 'Editar',

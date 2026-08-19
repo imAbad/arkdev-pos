@@ -109,6 +109,11 @@ export interface Product {
   min_stock: number
   image: string | null
   nearest_batch_expiration: string | null
+  // null cuando requires_batch=false — ese caso no tiene ningún mecanismo
+  // de conteo de existencias en el backend, ver ProductSerializer.
+  // get_current_stock. No confundir con 0 (que sí significa "sin
+  // existencias" para un producto que SÍ se rastrea).
+  current_stock: number | null
   related_products: number[]
   related_products_detail: RelatedProductSummary[]
   company: number

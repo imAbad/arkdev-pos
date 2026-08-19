@@ -1,3 +1,4 @@
+from django.db.models import Sum
 from django.utils import timezone
 from rest_framework import serializers
 
@@ -32,6 +33,7 @@ class RelatedProductSummarySerializer(serializers.ModelSerializer):
 class ProductSerializer(TenantScopedFieldsMixin, serializers.ModelSerializer):
     tenant_scoped_fields = ('category', 'supplier')
     nearest_batch_expiration = serializers.SerializerMethodField()
+    current_stock = serializers.SerializerMethodField()
     related_products_detail = RelatedProductSummarySerializer(source='related_products', many=True, read_only=True)
 
     class Meta:
@@ -40,7 +42,7 @@ class ProductSerializer(TenantScopedFieldsMixin, serializers.ModelSerializer):
             'id', 'name', 'sku', 'barcode', 'category', 'supplier',
             'unit_type', 'requires_batch', 'variant_attributes',
             'cost_price', 'sale_price', 'tax_rate', 'min_stock', 'image',
-            'nearest_batch_expiration', 'related_products', 'related_products_detail',
+            'nearest_batch_expiration', 'current_stock', 'related_products', 'related_products_detail',
             'company', 'created_at', 'updated_at',
         ]
         read_only_fields = ['company', 'created_at', 'updated_at']
@@ -74,6 +76,24 @@ class ProductSerializer(TenantScopedFieldsMixin, serializers.ModelSerializer):
             .first()
         )
         return nearest
+
+    def get_current_stock(self, product):
+        # Observación de sesión (ronda de 4 piezas, punto 1): sin esto,
+        # la pantalla de Inventario solo mostraba stock abriendo "Lotes"
+        # producto por producto — inutilizable para un vistazo rápido.
+        # `None` (no 0) cuando requires_batch=False es deliberado, no un
+        # descuido: ese caso no tiene NINGÚN mecanismo de conteo de
+        # existencias en el modelo actual (mismo hallazgo ya documentado
+        # en catalog.services.low_stock_products) — 0 insinuaría "sin
+        # existencias" cuando en realidad es "no rastreado".
+        if not product.requires_batch:
+            return None
+        qs = product.batches.filter(current_quantity__gt=0, expiration_date__gte=timezone.localdate())
+        request = self.context.get('request')
+        branch_id = request.query_params.get('branch') if request is not None else None
+        if branch_id:
+            qs = qs.filter(branch_id=branch_id)
+        return qs.aggregate(total=Sum('current_quantity'))['total'] or 0
 
 
 class BatchSerializer(TenantScopedFieldsMixin, serializers.ModelSerializer):

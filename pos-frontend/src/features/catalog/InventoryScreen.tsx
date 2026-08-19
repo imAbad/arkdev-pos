@@ -50,7 +50,7 @@ export function InventoryScreen() {
 
   function load() {
     setError(null)
-    Promise.all([listAllProducts(), listCategories(), listSuppliers()])
+    Promise.all([listAllProducts(branch?.id), listCategories(), listSuppliers()])
       .then(([productsResult, categoriesResult, suppliersResult]) => {
         setProducts(productsResult)
         setCategories(categoriesResult)
@@ -59,7 +59,8 @@ export function InventoryScreen() {
       .catch((err) => setError(apiErrorMessage(err, t.inventory.errorGeneric)))
   }
 
-  useEffect(load, [])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(load, [branch?.id])
 
   function categoryName(id: number): string {
     return categories.find((c) => c.id === id)?.name ?? `#${id}`
@@ -144,6 +145,7 @@ export function InventoryScreen() {
                 <th className="whitespace-nowrap px-3 py-2 font-semibold text-ink">{t.inventory.colCategory}</th>
                 <th className="whitespace-nowrap px-3 py-2 font-semibold text-ink">{t.inventory.colCost}</th>
                 <th className="whitespace-nowrap px-3 py-2 font-semibold text-ink">{t.inventory.colPrice}</th>
+                <th className="whitespace-nowrap px-3 py-2 font-semibold text-ink">{t.inventory.colCurrentStock}</th>
                 <th className="whitespace-nowrap px-3 py-2 font-semibold text-ink">{t.inventory.colMinStock}</th>
                 <th className="whitespace-nowrap px-3 py-2 font-semibold text-ink" />
               </tr>
@@ -156,6 +158,15 @@ export function InventoryScreen() {
                   <td className="px-3 py-2">{categoryName(product.category)}</td>
                   <td className="px-3 py-2">{formatCurrency(product.cost_price)}</td>
                   <td className="px-3 py-2">{formatCurrency(product.sale_price)}</td>
+                  <td className="px-3 py-2">
+                    {product.current_stock === null ? (
+                      <span className="text-ink/50" title={t.inventory.stockNotTracked}>
+                        —
+                      </span>
+                    ) : (
+                      product.current_stock
+                    )}
+                  </td>
                   <td className="px-3 py-2">{product.min_stock}</td>
                   <td className="px-3 py-2">
                     <div className="flex gap-2">
