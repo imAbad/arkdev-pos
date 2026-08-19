@@ -71,6 +71,15 @@ class Product(BaseTenantModel):
         PAQUETE = 'PAQUETE', 'Paquete'
         SERVICIO = 'SERVICIO', 'Servicio'
 
+    # Observación de sesión: qué unit_type admite cantidad fraccionaria en
+    # una venta es una propiedad del TIPO de unidad, no de la venta —
+    # vive aquí, sales.services.create_sale solo la consulta. Se cuentan
+    # en enteros PIEZA/PAQUETE/SERVICIO (no tiene sentido vender "1.5
+    # piezas", "1.5 paquetes" ni "1.5 servicios" — son unidades discretas);
+    # KG/GRAMO/LITRO son las únicas fraccionarias porque se venden a
+    # granel, por báscula o por medida.
+    INTEGER_UNIT_TYPES = {UnitType.PIEZA, UnitType.PAQUETE, UnitType.SERVICIO}
+
     name = models.CharField(max_length=255)
     sku = models.CharField(max_length=50)
     barcode = models.CharField(max_length=100, null=True, blank=True)
@@ -120,6 +129,10 @@ class Product(BaseTenantModel):
                 name='product_unique_company_barcode',
             ),
         ]
+
+    @property
+    def requires_integer_quantity(self):
+        return self.unit_type in self.INTEGER_UNIT_TYPES
 
     def __str__(self):
         return f'{self.name} ({self.sku})'

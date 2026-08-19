@@ -165,6 +165,12 @@ def create_sale(
             quantity = line['quantity']
             unit_price = line['unit_price']
 
+            if product.requires_integer_quantity and quantity != quantity.to_integral_value():
+                raise SaleError(
+                    f'{product.name} se vende por {product.get_unit_type_display().lower()} — '
+                    'la cantidad debe ser un número entero.',
+                )
+
             if batch is not None and batch.product_id != product.id:
                 raise SaleError(f'El lote {batch.batch_number} no corresponde al producto {product.name}.')
 

@@ -206,6 +206,44 @@ class CreateSaleServiceTests(TestCase):
                 payments=[{'method': 'CASH', 'amount': Decimal('11.60')}],
             )
 
+    def test_fractional_quantity_for_pieza_is_rejected_with_a_clear_message(self):
+        # Bug real reportado: el campo Decimal(10,3) de SaleDetail.quantity
+        # nunca impedía "1.5 piezas" — PIEZA/PAQUETE/SERVICIO se cuentan en
+        # enteros (ver catalog.models.Product.requires_integer_quantity).
+        with self.assertRaises(SaleError) as ctx:
+            create_sale(
+                cash_shift=self.ctx['shift'],
+                details=[{
+                    'product': self.ctx['product'], 'batch': None,
+                    'quantity': Decimal('1.5'), 'unit_price': Decimal('10.00'),
+                }],
+                payments=[{'method': 'CASH', 'amount': Decimal('17.40')}],
+            )
+        self.assertIn(self.ctx['product'].name, str(ctx.exception))
+        self.assertIn('entero', str(ctx.exception))
+        self.assertEqual(Sale.objects.count(), 0)
+
+    def test_fractional_quantity_is_rejected_for_paquete_and_servicio_too(self):
+        for unit_type in ('PAQUETE', 'SERVICIO'):
+            with self.subTest(unit_type=unit_type):
+                product = create_product(
+                    self.ctx['company'], sku=f'CONTADO-{unit_type}', unit_type=unit_type, tax_rate=Decimal('0'),
+                )
+                with self.assertRaises(SaleError):
+                    create_sale(
+                        cash_shift=self.ctx['shift'],
+                        details=[{'product': product, 'batch': None, 'quantity': Decimal('1.5'), 'unit_price': Decimal('10.00')}],
+                        payments=[{'method': 'CASH', 'amount': Decimal('15.00')}],
+                    )
+
+    def test_whole_quantity_for_pieza_is_accepted(self):
+        sale = create_sale(
+            cash_shift=self.ctx['shift'],
+            details=[{'product': self.ctx['product'], 'batch': None, 'quantity': Decimal('3'), 'unit_price': Decimal('10.00')}],
+            payments=[{'method': 'CASH', 'amount': Decimal('34.80')}],
+        )
+        self.assertEqual(sale.details.get().quantity, Decimal('3'))
+
     def test_fractional_quantity_for_bulk_unit_types(self):
         granel_product = create_product(
             self.ctx['company'], sku='GRANEL-1', unit_type='KG', tax_rate=Decimal('0'),

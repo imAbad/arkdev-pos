@@ -180,7 +180,11 @@ class SaleDetail(BaseTenantModel):
     # alcanzaría y migrar el tipo de columna después es justo lo que
     # arquitectura_tecnica_pos.md §4.3 ya pedía evitar para `image`. 3
     # decimales cubre gramos como unidad mínima de kg/litro; PIEZA/PAQUETE/
-    # SERVICIO simplemente usan enteros representados como Decimal (3.000).
+    # SERVICIO simplemente usan enteros representados como Decimal (3.000)
+    # — la columna lo permite fraccionario, pero sales.services.create_sale
+    # lo rechaza en tiempo de venta para esos unit_types (ver
+    # catalog.models.Product.requires_integer_quantity): bug real
+    # encontrado, el campo nunca impedía vender "1.5 piezas".
     quantity = models.DecimalField(max_digits=10, decimal_places=3)
     unit_price = models.DecimalField(max_digits=12, decimal_places=2)
     tax_rate_applied = models.DecimalField(max_digits=5, decimal_places=2)

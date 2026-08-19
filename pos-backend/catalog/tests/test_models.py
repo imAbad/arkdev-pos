@@ -68,6 +68,22 @@ class ProductModelTests(TestCase):
                 product = create_product(self.company, sku=f'SKU-{unit_type}', unit_type=unit_type)
                 product.full_clean()
 
+    def test_requires_integer_quantity_matches_documented_list(self):
+        # PIEZA/PAQUETE/SERVICIO se cuentan en enteros; KG/GRAMO/LITRO se
+        # venden a granel/báscula/medida y admiten fracción (ver
+        # sales.services.create_sale, que consulta esta propiedad).
+        integer_types = {'PIEZA', 'PAQUETE', 'SERVICIO'}
+        fractional_types = {'KG', 'GRAMO', 'LITRO'}
+        self.assertEqual({c[0] for c in Product.UnitType.choices}, integer_types | fractional_types)
+        for unit_type in integer_types:
+            with self.subTest(unit_type=unit_type):
+                product = create_product(self.company, sku=f'INT-{unit_type}', unit_type=unit_type)
+                self.assertTrue(product.requires_integer_quantity)
+        for unit_type in fractional_types:
+            with self.subTest(unit_type=unit_type):
+                product = create_product(self.company, sku=f'FRAC-{unit_type}', unit_type=unit_type)
+                self.assertFalse(product.requires_integer_quantity)
+
     def test_variant_attributes_defaults_to_null(self):
         product = create_product(self.company)
         self.assertIsNone(product.variant_attributes)

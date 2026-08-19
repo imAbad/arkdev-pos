@@ -18,7 +18,8 @@ export function CartView({ lines, onChangeQuantity, onRemove }: CartViewProps) {
   return (
     <ul className="flex flex-col gap-3">
       {lines.map((line) => {
-        const step = allowsFractionalQuantity(line.product) ? 0.1 : 1
+        const fractional = allowsFractionalQuantity(line.product)
+        const step = fractional ? 0.1 : 1
         const min = step
         return (
           <li
@@ -47,6 +48,15 @@ export function CartView({ lines, onChangeQuantity, onRemove }: CartViewProps) {
                 min={min}
                 step={step}
                 value={line.quantity}
+                onKeyDown={(event) => {
+                  // Bug real: PIEZA/PAQUETE/SERVICIO se cuentan en enteros
+                  // (ver catalog.Product.requires_integer_quantity) — el
+                  // punto/coma decimal ni siquiera debe poder escribirse
+                  // para esos, no basta con rechazar después.
+                  if (!fractional && (event.key === '.' || event.key === ',')) {
+                    event.preventDefault()
+                  }
+                }}
                 onChange={(event) => {
                   // Sin bloquear en 0/vacío mientras se escribe: si el
                   // input se queda en 0 o vacío al perder el foco (onBlur),
@@ -54,7 +64,11 @@ export function CartView({ lines, onChangeQuantity, onRemove }: CartViewProps) {
                   // rompía el gesto normal de "borrar y volver a escribir"
                   // (el input quedaba pegado en el valor anterior).
                   const raw = event.target.value
-                  onChangeQuantity(line.product.id, raw === '' ? 0 : Number(raw))
+                  const parsed = raw === '' ? 0 : Number(raw)
+                  // Segunda defensa (pegar texto no dispara onKeyDown):
+                  // redondear a entero si el producto no admite fracción.
+                  const value = fractional ? parsed : Math.round(parsed)
+                  onChangeQuantity(line.product.id, value)
                 }}
                 onBlur={(event) => {
                   const value = Number(event.target.value)
