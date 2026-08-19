@@ -74,6 +74,10 @@ export interface CreateSaleInput {
   cash_shift: number
   details: CreateSaleLineInput[]
   payments: CreateSalePaymentInput[]
+  // Solo cuando hay un pago CREDIT — el backend lo exige en ese caso
+  // (sales.services.create_sale) y lo usa para cargar customers.
+  // CreditAccount vía charge_credit.
+  client?: number
 }
 
 export async function createSale(input: CreateSaleInput): Promise<Sale> {

@@ -5,12 +5,13 @@ import { formatCurrency } from '@/lib/format'
 import { t } from '@/i18n'
 import { cn } from '@/lib/utils'
 import { paymentMethodLabel } from '@/features/sales/payment-labels'
-import type { PaymentMethod } from '@/types/api'
+import { CreditClientPicker } from '@/features/sales/CreditClientPicker'
+import type { Client, PaymentMethod } from '@/types/api'
 
-// Fiado (CREDIT) queda fuera de esta pantalla a propósito: requiere elegir
-// un cliente (customers.Client), fuera del alcance de esta sesión — ver
-// arquitectura_tecnica_pos.md.
-const METHODS: PaymentMethod[] = ['CASH', 'CARD', 'TRANSFER']
+// Observación de sesión (ronda de 4 piezas, punto 3): CREDIT (fiado) ya
+// no queda fuera — el backend (Client/CreditAccount/charge_credit) existía
+// completo desde hace varias sesiones, solo faltaba esta pantalla.
+const METHODS: PaymentMethod[] = ['CASH', 'CARD', 'TRANSFER', 'CREDIT']
 
 interface PaymentPanelProps {
   total: number
@@ -20,6 +21,8 @@ interface PaymentPanelProps {
   onChangeCashReceived: (value: string) => void
   reference: string
   onChangeReference: (value: string) => void
+  creditClient: Client | null
+  onChangeCreditClient: (client: Client | null) => void
   onCharge: () => void
   submitting: boolean
   disabled: boolean
@@ -33,6 +36,8 @@ export function PaymentPanel({
   onChangeCashReceived,
   reference,
   onChangeReference,
+  creditClient,
+  onChangeCreditClient,
   onCharge,
   submitting,
   disabled,
@@ -40,13 +45,20 @@ export function PaymentPanel({
   const receivedAmount = Number(cashReceived) || 0
   const change = method === 'CASH' ? receivedAmount - total : 0
   const cashInsufficient = method === 'CASH' && receivedAmount < total
-  const canCharge = !disabled && !submitting && !cashInsufficient
+  // No valida el monto contra available_credit aquí a propósito — esa
+  // regla real vive una sola vez, en customers.services.charge_credit
+  // (llamada por sales.services.create_sale al cobrar). Duplicarla aquí
+  // arriesgaría desincronizarse de la fuente de verdad; el backend
+  // rechaza con un mensaje claro si no alcanza, igual que ya hace con
+  // stock insuficiente.
+  const creditMissingClient = method === 'CREDIT' && creditClient === null
+  const canCharge = !disabled && !submitting && !cashInsufficient && !creditMissingClient
 
   return (
     <div className="flex flex-col gap-6">
       <div>
         <p className="text-lg font-medium text-ink mb-2">{t.sale.paymentMethod}</p>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {METHODS.map((value) => (
             <button
               key={value}
@@ -102,6 +114,8 @@ export function PaymentPanel({
           )}
         </div>
       )}
+
+      {method === 'CREDIT' && <CreditClientPicker client={creditClient} onSelect={onChangeCreditClient} />}
 
       <div className="flex items-baseline justify-between border-t-2 border-border pt-4">
         <span className="text-2xl font-semibold text-ink">{t.sale.total}</span>

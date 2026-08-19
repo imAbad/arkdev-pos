@@ -2,7 +2,7 @@
 // reales (src/types/api.ts, leído del backend, no inventado) — cualquier
 // test parte de estas y sobreescribe solo lo que le importa.
 import { AxiosError, AxiosHeaders } from 'axios'
-import type { Branch, CashRegister, CashShift, CompanySettings, Product, Sale, UserProfile } from '@/types/api'
+import type { Branch, CashRegister, CashShift, Client, CompanySettings, Product, Sale, UserProfile } from '@/types/api'
 
 /** AxiosError real (no un objeto a mano) con una respuesta HTTP — para
  * probar el mapeo de errores contra la forma exacta que devuelve axios,
@@ -123,6 +123,19 @@ export function makeProduct(overrides: Partial<Product> = {}): Product {
     current_stock: null,
     related_products: [],
     related_products_detail: [],
+    company: 1,
+    ...overrides,
+  }
+}
+
+export function makeClient(overrides: Partial<Client> = {}): Client {
+  return {
+    id: 1,
+    name: 'Doña Lupe',
+    phone: '5551234567',
+    email: '',
+    credit_limit: '500.00',
+    available_credit: '500.00',
     company: 1,
     ...overrides,
   }

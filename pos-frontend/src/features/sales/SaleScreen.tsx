@@ -14,19 +14,20 @@ import { PaymentPanel } from '@/features/sales/PaymentPanel'
 import { SaleConfirmation } from '@/features/sales/SaleConfirmation'
 import { Ticket } from '@/features/sales/Ticket'
 import { CloseShiftScreen } from '@/features/shift/CloseShiftScreen'
-import { cartTotal, type CartLine } from '@/features/sales/cart'
-import type { CashShift, PaymentMethod, Product, RelatedProductSummary, Sale } from '@/types/api'
+import { cartHasStockIssues, cartTotal, type CartLine } from '@/features/sales/cart'
+import type { CashShift, Client, PaymentMethod, Product, RelatedProductSummary, Sale } from '@/types/api'
 
 interface SaleScreenProps {
   shift: CashShift
 }
 
 export function SaleScreen({ shift }: SaleScreenProps) {
-  const { companySettings } = useAuth()
+  const { companySettings, branch } = useAuth()
   const [cart, setCart] = useState<CartLine[]>([])
   const [method, setMethod] = useState<PaymentMethod>('CASH')
   const [cashReceived, setCashReceived] = useState('0')
   const [reference, setReference] = useState('')
+  const [creditClient, setCreditClient] = useState<Client | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [confirmingCancel, setConfirmingCancel] = useState(false)
@@ -52,7 +53,7 @@ export function SaleScreen({ shift }: SaleScreenProps) {
   }
 
   async function addSuggestionToCart(productId: number) {
-    const product = await getProduct(productId)
+    const product = await getProduct(productId, branch?.id)
     addToCart(product)
   }
 
@@ -69,6 +70,7 @@ export function SaleScreen({ shift }: SaleScreenProps) {
     setMethod('CASH')
     setCashReceived('0')
     setReference('')
+    setCreditClient(null)
     setError(null)
     setCompleted(null)
     setViewingTicket(false)
@@ -98,6 +100,7 @@ export function SaleScreen({ shift }: SaleScreenProps) {
           unit_price: line.product.sale_price,
         })),
         payments: [{ method, amount: total.toFixed(2), reference: reference || undefined }],
+        client: method === 'CREDIT' ? creditClient?.id : undefined,
       })
       const changeGiven = method === 'CASH' ? Math.max(0, Number(cashReceived) - total) : 0
       setCompleted({ sale, changeGiven })
@@ -142,7 +145,7 @@ export function SaleScreen({ shift }: SaleScreenProps) {
     <>
       <div className="flex flex-1 flex-col gap-6 p-6 lg:flex-row">
         <Card className="flex-1">
-          <ProductSearch onSelect={addToCart} />
+          <ProductSearch onSelect={addToCart} branchId={branch?.id} />
           <CrossSellSuggestion
             items={crossSellItems}
             onAdd={(id) => void addSuggestionToCart(id)}
@@ -163,9 +166,11 @@ export function SaleScreen({ shift }: SaleScreenProps) {
             onChangeCashReceived={setCashReceived}
             reference={reference}
             onChangeReference={setReference}
+            creditClient={creditClient}
+            onChangeCreditClient={setCreditClient}
             onCharge={handleCharge}
             submitting={submitting}
-            disabled={cart.length === 0}
+            disabled={cart.length === 0 || cartHasStockIssues(cart)}
           />
 
           {error && (

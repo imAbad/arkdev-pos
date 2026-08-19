@@ -7,10 +7,19 @@ from customers.models import Client, CreditAccount, CreditMovement
 
 
 class ClientSerializer(serializers.ModelSerializer):
+    # Observación de sesión (ronda de 4 piezas, punto 3): venta a crédito
+    # en la pantalla de venta — mostrarlo aquí reutiliza el balance real
+    # de CreditAccount (misma fuente que customers.services.charge_credit
+    # ya valida al cobrar), no una segunda copia de la regla de negocio.
+    available_credit = serializers.SerializerMethodField()
+
     class Meta:
         model = Client
-        fields = ['id', 'name', 'phone', 'email', 'credit_limit', 'company', 'created_at', 'updated_at']
+        fields = ['id', 'name', 'phone', 'email', 'credit_limit', 'available_credit', 'company', 'created_at', 'updated_at']
         read_only_fields = ['company', 'created_at', 'updated_at']
+
+    def get_available_credit(self, client):
+        return client.credit_limit - client.credit_account.balance
 
 
 class CreditMovementSerializer(serializers.ModelSerializer):

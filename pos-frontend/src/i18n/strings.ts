@@ -107,6 +107,27 @@ export const es = {
     errorGeneric: 'No se pudo registrar la venta. Intenta de nuevo.',
     errorNoItems: 'Agrega al menos un producto antes de cobrar.',
     nearExpiryBadge: 'Caduca pronto',
+    // Observación de sesión (ronda de 4 piezas, punto 2): aviso temprano
+    // al capturar cantidad, no hasta "Cobrar" — dos strings, no una sola
+    // con el número incrustado, para poder poner el número real en medio.
+    stockExceededPrefix: 'Solo hay',
+    stockExceededSuffix: 'disponibles.',
+    // Observación de sesión (ronda de 4 piezas, punto 3): venta a
+    // crédito — nunca se había construido la pantalla (el backend sí
+    // existía completo).
+    creditClientLabel: 'Cliente',
+    creditSearchPlaceholder: 'Buscar cliente por nombre o teléfono',
+    creditSearching: 'Buscando…',
+    creditNoResults: 'No se encontró ningún cliente con ese nombre o teléfono.',
+    creditAvailable: 'Crédito disponible',
+    creditChangeClient: 'Cambiar cliente',
+    creditNewClient: 'Cliente nuevo',
+    creditNewClientName: 'Nombre',
+    creditNewClientPhone: 'Teléfono',
+    creditNewClientCreate: 'Crear cliente',
+    creditNewClientCreating: 'Creando…',
+    creditNewClientCancel: 'Cancelar',
+    creditNewClientErrorGeneric: 'No se pudo crear el cliente. Intenta de nuevo.',
     crossSellTitle: 'Clientes que compran esto también llevan:',
     crossSellAdd: 'Agregar',
     crossSellDismiss: 'Cerrar sugerencia',

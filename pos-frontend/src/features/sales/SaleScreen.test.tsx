@@ -4,13 +4,14 @@ import userEvent from '@testing-library/user-event'
 import { screen, waitFor } from '@testing-library/react'
 import { renderWithAuth } from '@/test/test-utils'
 import { server } from '@/test/server'
-import { makeProduct, makeSale, makeShift } from '@/test/fixtures'
+import { makeClient, makeProduct, makeSale, makeShift } from '@/test/fixtures'
 import { t } from '@/i18n'
 import { SaleScreen } from './SaleScreen'
 
 const BASE = import.meta.env.VITE_API_BASE_URL
 const PRODUCTS_URL = `${BASE}/products/`
 const CREATE_SALE_URL = `${BASE}/sales/create-sale/`
+const CLIENTS_URL = `${BASE}/clients/`
 
 const REFRESCO = makeProduct({ id: 1, name: 'Refresco de cola 600ml', sku: 'REF-600', sale_price: '18.00', tax_rate: '16.00' })
 const LECHE = makeProduct({ id: 2, name: 'Leche entera 1L', sku: 'LEC-1L', sale_price: '26.50', tax_rate: '0.00' })
@@ -285,6 +286,53 @@ describe('SaleScreen', () => {
     await waitFor(() => expect(screen.getAllByText('Mantequilla').length).toBeGreaterThan(0))
     // La sugerencia desaparece porque Mantequilla ya está en el carrito:
     expect(screen.queryByText(t.sale.crossSellTitle)).not.toBeInTheDocument()
+  })
+
+  it('punto 2: deshabilita "Cobrar" y avisa de inmediato cuando la cantidad supera el stock disponible', async () => {
+    const limitado = makeProduct({ id: 6, name: 'Producto con poco stock', sku: 'LIM-1', requires_batch: true, current_stock: 20 })
+    mockSearch({ limitado: [limitado] })
+    const user = userEvent.setup()
+    renderWithAuth(<SaleScreen shift={makeShift()} />)
+
+    await addProductToCart(user, 'limitado', 'Producto con poco stock')
+    const quantityInput = screen.getByLabelText(t.sale.quantity)
+    await user.clear(quantityInput)
+    await user.type(quantityInput, '73')
+
+    expect(await screen.findByText(/20 disponibles/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: t.sale.charge })).toBeDisabled()
+  })
+
+  it('punto 3: venta a crédito — elige cliente y manda el pago CREDIT con el client_id', async () => {
+    mockSearch({ refresco: [REFRESCO] })
+    server.use(
+      http.get(CLIENTS_URL, () =>
+        HttpResponse.json({ count: 1, next: null, previous: null, results: [makeClient({ id: 9, name: 'Doña Lupe' })] }),
+      ),
+    )
+    let capturedBody: unknown = null
+    server.use(
+      http.post(CREATE_SALE_URL, async ({ request }) => {
+        capturedBody = await request.json()
+        return HttpResponse.json(makeSale({ total: '20.88' }), { status: 201 })
+      }),
+    )
+
+    const user = userEvent.setup()
+    renderWithAuth(<SaleScreen shift={makeShift()} />)
+
+    await addProductToCart(user, 'refresco', 'Refresco de cola 600ml')
+    await user.click(screen.getByRole('button', { name: t.sale.methodCredit }))
+    expect(screen.getByRole('button', { name: t.sale.charge })).toBeDisabled()
+
+    await user.type(screen.getByLabelText(t.sale.creditClientLabel), 'lupe')
+    await user.click(await screen.findByRole('button', { name: /Doña Lupe/ }))
+
+    expect(screen.getByRole('button', { name: t.sale.charge })).toBeEnabled()
+    await user.click(screen.getByRole('button', { name: t.sale.charge }))
+
+    await screen.findByText(t.confirmation.title)
+    expect(capturedBody).toMatchObject({ payments: [{ method: 'CREDIT', amount: '20.88' }], client: 9 })
   })
 
   it('punto 5: "Cerrar sugerencia" la descarta sin agregar nada al carrito', async () => {

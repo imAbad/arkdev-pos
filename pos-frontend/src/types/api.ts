@@ -158,6 +158,20 @@ export interface LowStockRow {
 
 export type PaymentMethod = 'CASH' | 'CARD' | 'TRANSFER' | 'CREDIT'
 
+// Observación de sesión (ronda de 4 piezas, punto 3): venta a crédito —
+// `available_credit` reutiliza el balance real de CreditAccount, no una
+// segunda copia de la regla de negocio (ver customers.serializers.
+// ClientSerializer.get_available_credit).
+export interface Client {
+  id: number
+  name: string
+  phone: string
+  email: string
+  credit_limit: string
+  available_credit: string
+  company: number
+}
+
 export interface SaleDetail {
   id: number
   product: number

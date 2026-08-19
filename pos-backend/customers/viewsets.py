@@ -1,4 +1,4 @@
-from rest_framework import status, viewsets
+from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -14,6 +14,11 @@ class ClientViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
     queryset = Client.objects.all()
     serializer_class = ClientSerializer
     permission_classes = [IsAuthenticated]
+    # Observación de sesión (ronda de 4 piezas, punto 3): la pantalla de
+    # venta necesita "buscar un cliente existente" para fiado — mismo
+    # patrón que ProductViewSet.search_fields.
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['name', 'phone']
 
 
 class CreditAccountViewSet(TenantScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
