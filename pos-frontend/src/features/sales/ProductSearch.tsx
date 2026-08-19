@@ -8,11 +8,16 @@ import type { Product } from '@/types/api'
 
 interface ProductSearchProps {
   onSelect: (product: Product) => void
+  // Escopa current_stock a esta sucursal (ver services/api/catalogApi.ts)
+  // — sin esto, la validación temprana de stock del punto 2 compararía
+  // contra existencias de TODAS las sucursales del tenant, no las que de
+  // verdad puede vender este turno.
+  branchId?: number
 }
 
 const SEARCH_DEBOUNCE_MS = 300
 
-export function ProductSearch({ onSelect }: ProductSearchProps) {
+export function ProductSearch({ onSelect, branchId }: ProductSearchProps) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<Product[]>([])
   const [searching, setSearching] = useState(false)
@@ -25,12 +30,12 @@ export function ProductSearch({ onSelect }: ProductSearchProps) {
     }
     setSearching(true)
     const timeout = setTimeout(() => {
-      searchProducts(query)
+      searchProducts(query, branchId)
         .then(setResults)
         .finally(() => setSearching(false))
     }, SEARCH_DEBOUNCE_MS)
     return () => clearTimeout(timeout)
-  }, [query])
+  }, [query, branchId])
 
   function handlePick(product: Product) {
     onSelect(product)

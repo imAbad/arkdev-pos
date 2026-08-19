@@ -78,3 +78,29 @@ function fireChange(input: HTMLInputElement, value: string) {
   setter.call(input, value)
   input.dispatchEvent(new Event('input', { bubbles: true }))
 }
+
+// Observación de sesión (ronda de 4 piezas, punto 2): bug real reportado
+// — se avisaba de stock insuficiente hasta "Cobrar", no al capturar la
+// cantidad. Estos tests fijan el aviso inmediato con el número real.
+describe('CartView — aviso temprano de stock insuficiente', () => {
+  it('muestra "Solo hay N disponibles" cuando la cantidad supera el stock', () => {
+    const line: CartLine = { product: makeProduct({ current_stock: 20 }), quantity: 73 }
+    render(<CartView lines={[line]} onChangeQuantity={() => {}} onRemove={() => {}} />)
+
+    expect(screen.getByRole('alert')).toHaveTextContent(`${t.sale.stockExceededPrefix} 20 ${t.sale.stockExceededSuffix}`)
+  })
+
+  it('no muestra ningún aviso cuando la cantidad está dentro del stock', () => {
+    const line: CartLine = { product: makeProduct({ current_stock: 20 }), quantity: 5 }
+    render(<CartView lines={[line]} onChangeQuantity={() => {}} onRemove={() => {}} />)
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('no muestra ningún aviso para un producto sin control por lote (current_stock null)', () => {
+    const line: CartLine = { product: makeProduct({ current_stock: null }), quantity: 999 }
+    render(<CartView lines={[line]} onChangeQuantity={() => {}} onRemove={() => {}} />)
+
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+})

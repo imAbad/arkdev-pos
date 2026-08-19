@@ -2,7 +2,7 @@ import { Button } from '@/components/ui/button'
 import { formatCurrency } from '@/lib/format'
 import { isNearExpiry } from '@/lib/expiry'
 import { t } from '@/i18n'
-import { allowsFractionalQuantity, lineTotal, type CartLine } from '@/features/sales/cart'
+import { allowsFractionalQuantity, exceedsAvailableStock, lineTotal, type CartLine } from '@/features/sales/cart'
 
 interface CartViewProps {
   lines: CartLine[]
@@ -21,6 +21,7 @@ export function CartView({ lines, onChangeQuantity, onRemove }: CartViewProps) {
         const fractional = allowsFractionalQuantity(line.product)
         const step = fractional ? 0.1 : 1
         const min = step
+        const stockExceeded = exceedsAvailableStock(line)
         return (
           <li
             key={line.product.id}
@@ -89,6 +90,12 @@ export function CartView({ lines, onChangeQuantity, onRemove }: CartViewProps) {
             >
               {t.sale.remove}
             </Button>
+
+            {stockExceeded && (
+              <p role="alert" className="w-full text-base font-medium text-cancel">
+                {t.sale.stockExceededPrefix} {line.product.current_stock} {t.sale.stockExceededSuffix}
+              </p>
+            )}
           </li>
         )
       })}

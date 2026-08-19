@@ -1,16 +1,23 @@
 import { apiClient } from '@/lib/api-client'
-import type { Batch, Category, LowStockRow, Paginated, Product, Supplier } from '@/types/api'
+import type { Batch, Category, InventoryAdjustment, InventoryAdjustmentReason, LowStockRow, Paginated, Product, Supplier } from '@/types/api'
 
-export async function searchProducts(query: string): Promise<Product[]> {
+// `branchId` (opcional): escopa current_stock a esa sucursal — sin él, el
+// backend suma existencias de TODAS las sucursales del tenant (ver
+// ProductSerializer.get_current_stock). La pantalla de venta y la de
+// Inventario siempre lo pasan, porque ambas operan en el contexto de
+// una sola sucursal (useAuth().branch).
+export async function searchProducts(query: string, branchId?: number): Promise<Product[]> {
   if (!query.trim()) return []
   const response = await apiClient.get<Paginated<Product>>('/products/', {
-    params: { search: query },
+    params: { search: query, ...(branchId ? { branch: branchId } : {}) },
   })
   return response.data.results
 }
 
-export async function getProduct(id: number): Promise<Product> {
-  const response = await apiClient.get<Product>(`/products/${id}/`)
+export async function getProduct(id: number, branchId?: number): Promise<Product> {
+  const response = await apiClient.get<Product>(`/products/${id}/`, {
+    params: branchId ? { branch: branchId } : {},
+  })
   return response.data
 }
 

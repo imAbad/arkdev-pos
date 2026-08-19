@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { makeProduct } from '@/test/fixtures'
-import { allowsFractionalQuantity, cartTotal, lineSubtotal, lineTax, lineTotal, type CartLine } from './cart'
+import {
+  allowsFractionalQuantity,
+  cartHasStockIssues,
+  cartTotal,
+  exceedsAvailableStock,
+  lineSubtotal,
+  lineTax,
+  lineTotal,
+  type CartLine,
+} from './cart'
 
 describe('cart math (sin mocks — misma lógica que sales.services.create_sale)', () => {
   it('calcula el subtotal de una línea como cantidad * precio', () => {
@@ -54,5 +63,43 @@ describe('cart math (sin mocks — misma lógica que sales.services.create_sale)
     expect(allowsFractionalQuantity(makeProduct({ unit_type: 'PIEZA' }))).toBe(false)
     expect(allowsFractionalQuantity(makeProduct({ unit_type: 'PAQUETE' }))).toBe(false)
     expect(allowsFractionalQuantity(makeProduct({ unit_type: 'SERVICIO' }))).toBe(false)
+  })
+})
+
+describe('exceedsAvailableStock / cartHasStockIssues (punto 2: aviso temprano de stock)', () => {
+  it('true cuando la cantidad pedida supera el stock actual', () => {
+    const line: CartLine = { product: makeProduct({ current_stock: 20 }), quantity: 73 }
+    expect(exceedsAvailableStock(line)).toBe(true)
+  })
+
+  it('false cuando la cantidad pedida está dentro del stock actual', () => {
+    const line: CartLine = { product: makeProduct({ current_stock: 20 }), quantity: 5 }
+    expect(exceedsAvailableStock(line)).toBe(false)
+  })
+
+  it('false exactamente en el límite (pedir justo lo que hay no es un exceso)', () => {
+    const line: CartLine = { product: makeProduct({ current_stock: 20 }), quantity: 20 }
+    expect(exceedsAvailableStock(line)).toBe(false)
+  })
+
+  it('false cuando current_stock es null — producto sin control por lote, nada que comparar', () => {
+    const line: CartLine = { product: makeProduct({ current_stock: null }), quantity: 999 }
+    expect(exceedsAvailableStock(line)).toBe(false)
+  })
+
+  it('cartHasStockIssues es true si CUALQUIER línea excede su stock', () => {
+    const lines: CartLine[] = [
+      { product: makeProduct({ id: 1, current_stock: 20 }), quantity: 5 },
+      { product: makeProduct({ id: 2, current_stock: 3 }), quantity: 10 },
+    ]
+    expect(cartHasStockIssues(lines)).toBe(true)
+  })
+
+  it('cartHasStockIssues es false cuando ninguna línea excede su stock', () => {
+    const lines: CartLine[] = [
+      { product: makeProduct({ id: 1, current_stock: 20 }), quantity: 5 },
+      { product: makeProduct({ id: 2, current_stock: null }), quantity: 999 },
+    ]
+    expect(cartHasStockIssues(lines)).toBe(false)
   })
 })
