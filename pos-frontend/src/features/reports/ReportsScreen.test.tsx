@@ -15,6 +15,8 @@ const BRANCHES_URL = `${BASE}/branches/`
 const SALES_BY_PRODUCT_URL = `${BASE}/reports/sales-by-product/`
 const INVENTORY_VALUATION_URL = `${BASE}/reports/inventory-valuation/`
 const NEAR_EXPIRY_URL = `${BASE}/reports/near-expiry-stock/`
+const CASH_SHIFT_CLOSURES_URL = `${BASE}/reports/cash-shift-closures/`
+const CASH_SHIFT_DETAIL_URL = `${BASE}/reports/cash-shift-detail/`
 
 // jsdom no implementa createObjectURL/revokeObjectURL — se agregan al
 // URL real (no se reemplaza el global: axios usa `new URL(...)` para
@@ -136,6 +138,109 @@ describe('ReportsScreen', () => {
     renderReportsScreen()
 
     expect(await screen.findByText('Esta acción requiere el rol de administrador.')).toBeInTheDocument()
+  })
+})
+
+describe('ReportsScreen — Cierre de turno detallado (drill-down de un turno)', () => {
+  function mockClosuresList() {
+    server.use(
+      http.get(BRANCHES_URL, () => HttpResponse.json({ count: 0, next: null, previous: null, results: [] })),
+      http.get(SALES_BY_PRODUCT_URL, () => HttpResponse.json([])),
+      http.get(CASH_SHIFT_CLOSURES_URL, () =>
+        HttpResponse.json([
+          {
+            id: 42, branch_name: 'Centro', register_name: 'Caja 1', user_email: 'cajero@donchuy.test',
+            opened_at: '2026-08-18T14:00:00Z', closed_at: '2026-08-18T20:00:00Z',
+            opening_balance: '500.00', expected_closing_balance: '650.00', actual_closing_balance: '650.00',
+            cash_difference: '0.00', expected_voucher_total: '0.00', actual_voucher_total: '0.00', voucher_difference: '0.00',
+          },
+        ]),
+      ),
+    )
+  }
+
+  function mockShiftDetail() {
+    server.use(
+      http.get(CASH_SHIFT_DETAIL_URL, () =>
+        HttpResponse.json({
+          shift_id: 42, branch_name: 'Centro', register_name: 'Caja 1', user_email: 'cajero@donchuy.test',
+          opened_at: '2026-08-18T14:00:00Z', closed_at: '2026-08-18T20:00:00Z',
+          opening_balance: '500.00', expected_closing_balance: '650.00', actual_closing_balance: '650.00',
+          cash_difference: '0.00', expected_voucher_total: '0.00', actual_voucher_total: '0.00', voucher_difference: '0.00',
+          sales_count: 2, sales_total: '150.00',
+          payments_by_method: [{ method: 'CASH', method_label: 'Efectivo', total: '150.00' }],
+          credit_payments: [{ id: 1, client_name: 'Cliente Fiel', amount: '80.00', created_at: '2026-08-18T16:00:00Z' }],
+          credit_payments_total: '80.00',
+        }),
+      ),
+    )
+  }
+
+  it('lista los turnos cerrados con un botón de "Ver detalle" por fila', async () => {
+    mockClosuresList()
+    const user = userEvent.setup()
+    renderReportsScreen()
+    await screen.findByText(t.reports.empty)
+
+    await user.click(screen.getByRole('button', { name: t.reports.tabShiftDetail }))
+
+    expect(await screen.findByText('cajero@donchuy.test')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: t.reports.shiftDetailViewDetail })).toBeInTheDocument()
+  })
+
+  it('"Ver detalle" carga y muestra el desglose completo del turno', async () => {
+    mockClosuresList()
+    mockShiftDetail()
+    const user = userEvent.setup()
+    renderReportsScreen()
+    await screen.findByText(t.reports.empty)
+    await user.click(screen.getByRole('button', { name: t.reports.tabShiftDetail }))
+    await screen.findByRole('button', { name: t.reports.shiftDetailViewDetail })
+
+    await user.click(screen.getByRole('button', { name: t.reports.shiftDetailViewDetail }))
+
+    expect(await screen.findByText(t.reports.shiftDetailSummaryTitle)).toBeInTheDocument()
+    expect(screen.getByText('Efectivo')).toBeInTheDocument()
+    expect(screen.getByText('Cliente Fiel')).toBeInTheDocument()
+    expect(screen.getByText('$80.00')).toBeInTheDocument()
+  })
+
+  it('"Volver a la lista" regresa al listado de turnos', async () => {
+    mockClosuresList()
+    mockShiftDetail()
+    const user = userEvent.setup()
+    renderReportsScreen()
+    await screen.findByText(t.reports.empty)
+    await user.click(screen.getByRole('button', { name: t.reports.tabShiftDetail }))
+    await user.click(await screen.findByRole('button', { name: t.reports.shiftDetailViewDetail }))
+    await screen.findByText(t.reports.shiftDetailSummaryTitle)
+
+    await user.click(screen.getByRole('button', { name: t.reports.shiftDetailBackToList }))
+
+    expect(screen.queryByText(t.reports.shiftDetailSummaryTitle)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: t.reports.shiftDetailViewDetail })).toBeInTheDocument()
+  })
+
+  it('cuando no hay abonos a crédito en el turno, muestra el mensaje explícito en vez de una tabla vacía', async () => {
+    mockClosuresList()
+    server.use(
+      http.get(CASH_SHIFT_DETAIL_URL, () =>
+        HttpResponse.json({
+          shift_id: 42, branch_name: 'Centro', register_name: 'Caja 1', user_email: 'cajero@donchuy.test',
+          opened_at: '2026-08-18T14:00:00Z', closed_at: '2026-08-18T20:00:00Z',
+          opening_balance: '500.00', expected_closing_balance: '500.00', actual_closing_balance: '500.00',
+          cash_difference: '0.00', expected_voucher_total: '0.00', actual_voucher_total: '0.00', voucher_difference: '0.00',
+          sales_count: 0, sales_total: '0.00', payments_by_method: [], credit_payments: [], credit_payments_total: '0.00',
+        }),
+      ),
+    )
+    const user = userEvent.setup()
+    renderReportsScreen()
+    await screen.findByText(t.reports.empty)
+    await user.click(screen.getByRole('button', { name: t.reports.tabShiftDetail }))
+    await user.click(await screen.findByRole('button', { name: t.reports.shiftDetailViewDetail }))
+
+    expect(await screen.findByText(t.reports.shiftDetailNoCreditPayments)).toBeInTheDocument()
   })
 })
 

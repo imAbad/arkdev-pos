@@ -198,6 +198,24 @@ export const es = {
     exportToExcel: 'Exportar a Excel',
     exporting: 'Exportando…',
     exportErrorGeneric: 'No se pudo exportar el reporte. Intenta de nuevo.',
+    // Observación de sesión (ronda "3 piezas", punto 3): drill-down de un
+    // turno individual — mismo filtro de fecha/sucursal que "Cierres de
+    // caja" para elegir el turno, no un reemplazo de esa lista.
+    tabShiftDetail: 'Cierre de turno detallado',
+    shiftDetailViewDetail: 'Ver detalle',
+    shiftDetailBackToList: 'Volver a la lista',
+    shiftDetailSummaryTitle: 'Resumen del turno',
+    shiftDetailSalesCount: 'Ventas registradas',
+    shiftDetailSalesTotal: 'Total vendido',
+    shiftDetailPaymentsTitle: 'Ventas por método de pago',
+    shiftDetailCreditTitle: 'Abonos a crédito recibidos durante el turno',
+    shiftDetailCreditNote: 'Se ubican por hora de apertura/cierre del turno — un abono no queda ligado a una caja específica en el sistema todavía.',
+    shiftDetailNoCreditPayments: 'No se recibieron abonos a crédito durante este turno.',
+    colMethod: 'Método',
+    colTotal: 'Total',
+    colClient: 'Cliente',
+    colAmount: 'Monto',
+    colDateTime: 'Fecha y hora',
   },
   modules: {
     navLink: 'Módulos',

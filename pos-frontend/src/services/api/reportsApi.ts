@@ -1,6 +1,7 @@
 import { apiClient } from '@/lib/api-client'
 import type {
   CashShiftClosureRow,
+  CashShiftDetail,
   ExpiredStockRow,
   InventoryValuationRow,
   NearExpiryStockRow,
@@ -92,6 +93,16 @@ export async function getCashShiftClosures(filters: DateRangeReportFilters): Pro
   return response.data
 }
 
+// Observación de sesión (ronda "3 piezas", punto 3): drill-down de un
+// turno individual — no toma date_from/date_to/branch, solo el id del
+// turno (ya viene de una fila de getCashShiftClosures).
+export async function getCashShiftDetail(shiftId: number): Promise<CashShiftDetail> {
+  const response = await apiClient.get<CashShiftDetail>('/reports/cash-shift-detail/', {
+    params: { shift: shiftId },
+  })
+  return response.data
+}
+
 // Punto 11: exportación a Excel de "los 4 reportes existentes" (los que
 // ya estaban en esta pantalla antes de esta sesión: ventas -por
 // producto/categoría/cajero, un solo endpoint con group_by-, valuación de
@@ -138,4 +149,8 @@ export async function exportCashShiftClosures(filters: DateRangeReportFilters): 
     { date_from: filters.dateFrom, date_to: filters.dateTo, ...branchParam(filters.branchId) },
     'cierres-de-caja.xlsx',
   )
+}
+
+export async function exportCashShiftDetail(shiftId: number): Promise<void> {
+  await downloadExcel('/reports/cash-shift-detail/', { shift: shiftId }, 'cierre-de-turno-detallado.xlsx')
 }

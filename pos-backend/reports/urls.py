@@ -2,6 +2,7 @@ from django.urls import path
 
 from reports.views import (
     CashShiftClosuresReportView,
+    CashShiftDetailReportView,
     ExpiredStockReportView,
     InventoryValuationReportView,
     NearExpiryStockReportView,
@@ -19,6 +20,7 @@ urlpatterns = [
     path('reports/expired-stock/', ExpiredStockReportView.as_view(), name='report-expired-stock'),
     path('reports/near-expiry-stock/', NearExpiryStockReportView.as_view(), name='report-near-expiry-stock'),
     path('reports/cash-shift-closures/', CashShiftClosuresReportView.as_view(), name='report-cash-shift-closures'),
+    path('reports/cash-shift-detail/', CashShiftDetailReportView.as_view(), name='report-cash-shift-detail'),
     path(
         'reports/sales-by-payment-method/',
         SalesByPaymentMethodReportView.as_view(),

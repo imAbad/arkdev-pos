@@ -24,3 +24,7 @@ class BranchOnlyReportQuerySerializer(serializers.Serializer):
 class NearExpiryReportQuerySerializer(serializers.Serializer):
     branch = serializers.IntegerField(required=False, allow_null=True)
     days = serializers.IntegerField(required=False, default=7, min_value=1, max_value=365)
+
+
+class ShiftDetailReportQuerySerializer(serializers.Serializer):
+    shift = serializers.IntegerField()

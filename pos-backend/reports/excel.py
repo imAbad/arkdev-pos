@@ -31,12 +31,7 @@ def _cell_value(value):
     return value
 
 
-def build_excel_response(*, filename, columns, rows):
-    """`columns`: lista de (encabezado, clave-en-la-fila). `rows`: la
-    misma lista de dicts que cada reports.services.* ya devuelve para
-    JSON — se reutiliza tal cual, esto solo la vuelca a una hoja."""
-    workbook = Workbook()
-    sheet = workbook.active
+def _write_sheet(sheet, columns, rows):
     sheet.append([label for label, _ in columns])
     for row in rows:
         sheet.append([_cell_value(row.get(key)) for _, key in columns])
@@ -45,6 +40,8 @@ def build_excel_response(*, filename, columns, rows):
         length = max((len(str(cell.value)) for cell in column_cells if cell.value is not None), default=10)
         sheet.column_dimensions[column_cells[0].column_letter].width = min(length + 2, 40)
 
+
+def _workbook_response(workbook, filename):
     buffer = BytesIO()
     workbook.save(buffer)
 
@@ -54,3 +51,26 @@ def build_excel_response(*, filename, columns, rows):
     )
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     return response
+
+
+def build_excel_response(*, filename, columns, rows):
+    """`columns`: lista de (encabezado, clave-en-la-fila). `rows`: la
+    misma lista de dicts que cada reports.services.* ya devuelve para
+    JSON — se reutiliza tal cual, esto solo la vuelca a una hoja."""
+    workbook = Workbook()
+    _write_sheet(workbook.active, columns, rows)
+    return _workbook_response(workbook, filename)
+
+
+def build_multi_sheet_excel_response(*, filename, sheets):
+    """Observación de sesión (reporte de cierre de turno detallado): mismo
+    mecanismo que build_excel_response, pero para un reporte con más de
+    una tabla (resumen del turno + pagos por método + abonos a crédito) —
+    una hoja por sección en vez de forzarlas todas a una sola tabla plana.
+    `sheets`: lista de (nombre_hoja, columns, rows)."""
+    workbook = Workbook()
+    workbook.remove(workbook.active)
+    for name, columns, rows in sheets:
+        sheet = workbook.create_sheet(title=name[:31])  # límite de Excel para nombres de hoja
+        _write_sheet(sheet, columns, rows)
+    return _workbook_response(workbook, filename)

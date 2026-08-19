@@ -275,3 +275,40 @@ export interface CashShiftClosureRow {
   actual_voucher_total: string
   voucher_difference: string
 }
+
+// Observación de sesión (ronda "3 piezas", punto 3): drill-down de UN
+// turno cerrado — no reemplaza CashShiftClosureRow (la fila agregada de
+// la lista), es el detalle completo de un solo renglón de esa lista.
+export interface CashShiftPaymentByMethod {
+  method: string
+  method_label: string
+  total: string
+}
+
+export interface CashShiftCreditPayment {
+  id: number
+  client_name: string
+  amount: string
+  created_at: string
+}
+
+export interface CashShiftDetail {
+  shift_id: number
+  branch_name: string
+  register_name: string
+  user_email: string | null
+  opened_at: string
+  closed_at: string
+  opening_balance: string
+  expected_closing_balance: string
+  actual_closing_balance: string
+  cash_difference: string
+  expected_voucher_total: string
+  actual_voucher_total: string
+  voucher_difference: string
+  sales_count: number
+  sales_total: string
+  payments_by_method: CashShiftPaymentByMethod[]
+  credit_payments: CashShiftCreditPayment[]
+  credit_payments_total: string
+}

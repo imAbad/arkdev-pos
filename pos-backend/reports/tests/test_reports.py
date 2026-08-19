@@ -10,6 +10,9 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from catalog.tests.factories import create_batch, create_category, create_product
+from customers.models import CreditMovement
+from customers.services import pay_credit
+from customers.tests.factories import create_client
 from reports import services
 from sales.services import close_shift, compute_expected_totals, open_shift
 from sales.tests.factories import create_cash_register, create_checkout_context, make_sale
@@ -225,6 +228,132 @@ class CashShiftClosuresServiceTests(TestCase):
     def test_excludes_shifts_still_open(self):
         rows = services.cash_shift_closures(company=self.ctx['company'], date_from=self.today, date_to=self.today)
         self.assertEqual(rows, [])
+
+
+class CashShiftDetailServiceTests(TestCase):
+    """Observación de sesión (ronda "3 piezas", punto 3): drill-down de un
+    solo turno — cada sección se contrasta contra lo que ya quedó
+    guardado en la base de datos (Sale/Payment/CreditMovement), no un
+    cálculo paralelo."""
+
+    def setUp(self):
+        self.ctx = create_checkout_context(tax_rate=Decimal('16'))
+
+    def _close(self, actual_closing_balance=None, actual_voucher_total=None):
+        expected = compute_expected_totals(self.ctx['shift'])
+        return close_shift(
+            shift=self.ctx['shift'], closing_user=self.ctx['user'],
+            actual_closing_balance=actual_closing_balance if actual_closing_balance is not None else expected['cash'],
+            actual_voucher_total=actual_voucher_total if actual_voucher_total is not None else expected['voucher'],
+        )
+
+    def test_sales_count_and_total_match_the_shifts_own_sales(self):
+        make_sale(self.ctx['shift'], self.ctx['product'], quantity=Decimal('1'), unit_price=Decimal('100.00'))
+        make_sale(self.ctx['shift'], self.ctx['product'], quantity=Decimal('1'), unit_price=Decimal('50.00'))
+        # Venta de OTRO turno — no debe colarse en el detalle de este.
+        other_ctx = create_checkout_context('Otra tienda', 'Sur', 'otra@sur.test')
+        make_sale(other_ctx['shift'], other_ctx['product'], unit_price=Decimal('999.00'))
+        self._close()
+
+        data = services.cash_shift_detail(company=self.ctx['company'], shift=self.ctx['shift'])
+        self.assertEqual(data['sales_count'], 2)
+        self.assertEqual(data['sales_total'], Decimal('174.00'))  # (100+50) * 1.16
+
+    def test_payments_by_method_breakdown_matches_actual_payments(self):
+        make_sale(self.ctx['shift'], self.ctx['product'], unit_price=Decimal('100.00'), payment_method='CASH')
+        make_sale(self.ctx['shift'], self.ctx['product'], unit_price=Decimal('50.00'), payment_method='CARD')
+        self._close()
+
+        data = services.cash_shift_detail(company=self.ctx['company'], shift=self.ctx['shift'])
+        by_method = {row['method']: row['total'] for row in data['payments_by_method']}
+        self.assertEqual(by_method['CASH'], Decimal('116.00'))
+        self.assertEqual(by_method['CARD'], Decimal('58.00'))
+        labels = {row['method']: row['method_label'] for row in data['payments_by_method']}
+        self.assertEqual(labels['CASH'], 'Efectivo')
+        self.assertEqual(labels['CARD'], 'Tarjeta')
+
+    def test_arqueo_fields_come_straight_from_the_shift_model_not_recalculated(self):
+        make_sale(self.ctx['shift'], self.ctx['product'], unit_price=Decimal('100.00'))
+        expected = compute_expected_totals(self.ctx['shift'])
+        self._close(actual_closing_balance=expected['cash'] - Decimal('5.00'))
+
+        data = services.cash_shift_detail(company=self.ctx['company'], shift=self.ctx['shift'])
+        self.assertEqual(data['opening_balance'], self.ctx['shift'].opening_balance)
+        self.assertEqual(data['expected_closing_balance'], self.ctx['shift'].expected_closing_balance)
+        self.assertEqual(data['actual_closing_balance'], self.ctx['shift'].actual_closing_balance)
+        self.assertEqual(data['cash_difference'], Decimal('-5.00'))
+
+    def test_credit_payments_received_during_the_shift_are_included(self):
+        client = create_client(self.ctx['company'], credit_limit=Decimal('500'))
+        pay_credit(account=client.credit_account, amount=Decimal('80.00'))
+        self._close()
+
+        data = services.cash_shift_detail(company=self.ctx['company'], shift=self.ctx['shift'])
+        self.assertEqual(len(data['credit_payments']), 1)
+        self.assertEqual(data['credit_payments'][0]['client_name'], client.name)
+        self.assertEqual(data['credit_payments'][0]['amount'], Decimal('80.00'))
+        self.assertEqual(data['credit_payments_total'], Decimal('80.00'))
+
+    def test_credit_payments_outside_the_shift_window_are_excluded(self):
+        client = create_client(self.ctx['company'], credit_limit=Decimal('500'))
+        pay_credit(account=client.credit_account, amount=Decimal('80.00'))
+        self._close()
+        movement = CreditMovement.objects.get(account=client.credit_account)
+        CreditMovement.objects.filter(pk=movement.pk).update(
+            created_at=self.ctx['shift'].opened_at - timedelta(hours=1),
+        )
+
+        data = services.cash_shift_detail(company=self.ctx['company'], shift=self.ctx['shift'])
+        self.assertEqual(data['credit_payments'], [])
+        self.assertEqual(data['credit_payments_total'], Decimal('0'))
+
+    def test_shift_with_no_sales_or_credit_payments_reports_zeroes_not_an_error(self):
+        self._close()
+        data = services.cash_shift_detail(company=self.ctx['company'], shift=self.ctx['shift'])
+        self.assertEqual(data['sales_count'], 0)
+        self.assertEqual(data['sales_total'], Decimal('0'))
+        self.assertEqual(data['payments_by_method'], [])
+        self.assertEqual(data['credit_payments'], [])
+
+
+class CashShiftDetailApiTests(APITestCase):
+    def setUp(self):
+        self.ctx = create_checkout_context()
+        self.admin, _ = create_user_with_profile(
+            'admin@donchuy.test', self.ctx['branch'], role=UserProfile.Role.ADMINISTRADOR,
+        )
+
+    def _auth(self, user):
+        self.client.force_authenticate(user=user)
+
+    def test_returns_the_detail_of_a_closed_shift(self):
+        make_sale(self.ctx['shift'], self.ctx['product'], unit_price=Decimal('100.00'))
+        close_shift(shift=self.ctx['shift'], closing_user=self.ctx['user'], actual_closing_balance=Decimal('0'))
+        self._auth(self.admin)
+
+        response = self.client.get('/api/v1/reports/cash-shift-detail/', {'shift': self.ctx['shift'].id})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['shift_id'], self.ctx['shift'].id)
+        self.assertEqual(response.data['sales_count'], 1)
+
+    def test_an_open_shift_is_rejected_with_a_clear_400(self):
+        self._auth(self.admin)
+        response = self.client.get('/api/v1/reports/cash-shift-detail/', {'shift': self.ctx['shift'].id})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_a_shift_from_another_tenant_is_404_not_leaked(self):
+        other_ctx = create_checkout_context('Otro tenant', 'Norte', 'otro@norte.test')
+        close_shift(shift=other_ctx['shift'], closing_user=other_ctx['user'], actual_closing_balance=Decimal('0'))
+        self._auth(self.admin)
+
+        response = self.client.get('/api/v1/reports/cash-shift-detail/', {'shift': other_ctx['shift'].id})
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_plain_cajero_is_denied(self):
+        close_shift(shift=self.ctx['shift'], closing_user=self.ctx['user'], actual_closing_balance=Decimal('0'))
+        self._auth(self.ctx['user'])  # handles_cash=True, sin can_authorize_exceptions
+        response = self.client.get('/api/v1/reports/cash-shift-detail/', {'shift': self.ctx['shift'].id})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
 
 class ReportsApiPermissionTests(APITestCase):

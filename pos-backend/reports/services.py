@@ -14,12 +14,14 @@ del usuario autenticado) — ninguna de estas consultas vuelve a filtrar por
 tenant más allá de eso, ya viene acotado desde aquí.
 """
 from datetime import timedelta
+from decimal import Decimal
 
 from django.db.models import DecimalField, ExpressionWrapper, F, Sum, Value
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from catalog.models import Batch
+from customers.models import CreditMovement
 from sales.models import CashShift, Payment, Sale, SaleDetail
 
 
@@ -205,6 +207,82 @@ def cash_shift_closures(*, company, date_from, date_to, branch=None):
             'voucher_difference': shift.voucher_difference,
         })
     return rows
+
+
+def cash_shift_detail(*, company, shift):
+    """Drill-down de UN turno cerrado (el renglón agregado ya lo da
+    cash_shift_closures) — mismo nivel de detalle que un corte de caja real:
+    ventas del turno desglosadas por método de pago, el arqueo (ya
+    calculado por el modelo, no recalculado aquí) y abonos a crédito
+    recibidos durante el turno.
+
+    NO incluye "movimientos de caja manuales" (entradas/salidas de
+    efectivo fuera de venta, ej. un retiro a mitad de turno) — ese
+    concepto no existe todavía en el modelo de datos; es alcance mayor
+    que merece su propia decisión, no se improvisa aquí (observación de
+    sesión, ronda "3 piezas", punto 3).
+
+    `shift` ya viene resuelto y acotado al tenant de quien llama (mismo
+    criterio anti-IDOR que _resolve_branch/_resolve_cashier en
+    reports.views) — el filtro `company=company` de abajo es una
+    defensa adicional, no la única barrera.
+    """
+    sales_qs = Sale.objects.filter(company=company, cash_shift=shift, status=Sale.Status.COMPLETED)
+    sales_total = sales_qs.aggregate(total=Coalesce(Sum('total'), Decimal('0')))['total']
+
+    method_labels = dict(Payment.Method.choices)
+    payments_qs = (
+        Payment.objects.filter(company=company, sale__cash_shift=shift, sale__status=Sale.Status.COMPLETED)
+        .values('method')
+        .annotate(total=Sum('amount'))
+        .order_by('-total')
+    )
+    payments_by_method = [
+        {'method': row['method'], 'method_label': method_labels.get(row['method'], row['method']), 'total': row['total']}
+        for row in payments_qs
+    ]
+
+    # CreditMovement no tiene FK a CashShift (un abono casi nunca viene de
+    # una venta, ver su docstring) — se ubica por ventana de tiempo
+    # [opened_at, closed_at]. Simplificación aceptada a propósito: si dos
+    # turnos de cajas distintas estuvieron abiertos al mismo tiempo, un
+    # abono de ese rango no se puede atribuir con certeza a uno u otro —
+    # el dato para hacerlo mejor (qué caja/turno cobró el abono) no existe
+    # todavía en el modelo.
+    credit_movements_qs = CreditMovement.objects.filter(
+        company=company, type=CreditMovement.Type.ABONO,
+        created_at__gte=shift.opened_at, created_at__lte=shift.closed_at,
+    ).select_related('account__client').order_by('created_at')
+    credit_payments = [
+        {
+            'id': movement.id,
+            'client_name': movement.account.client.name,
+            'amount': movement.amount,
+            'created_at': movement.created_at,
+        }
+        for movement in credit_movements_qs
+    ]
+
+    return {
+        'shift_id': shift.id,
+        'branch_name': shift.cash_register.branch.name,
+        'register_name': shift.cash_register.name,
+        'user_email': shift.user.email,
+        'opened_at': shift.opened_at,
+        'closed_at': shift.closed_at,
+        'opening_balance': shift.opening_balance,
+        'expected_closing_balance': shift.expected_closing_balance,
+        'actual_closing_balance': shift.actual_closing_balance,
+        'cash_difference': shift.cash_difference,
+        'expected_voucher_total': shift.expected_voucher_total,
+        'actual_voucher_total': shift.actual_voucher_total,
+        'voucher_difference': shift.voucher_difference,
+        'sales_count': sales_qs.count(),
+        'sales_total': sales_total,
+        'payments_by_method': payments_by_method,
+        'credit_payments': credit_payments,
+        'credit_payments_total': sum((m['amount'] for m in credit_payments), Decimal('0')),
+    }
 
 
 def sales_summary_by_payment_method(*, company, date_from, date_to, branch=None):

@@ -5,13 +5,15 @@ from rest_framework.views import APIView
 from audit.services import log_action
 from core.permissions import IsAdministratorOrSupervisor
 from reports import services
-from reports.excel import build_excel_response
+from reports.excel import build_excel_response, build_multi_sheet_excel_response
 from reports.serializers import (
     BranchOnlyReportQuerySerializer,
     DateRangeReportQuerySerializer,
     NearExpiryReportQuerySerializer,
     SalesByProductQuerySerializer,
+    ShiftDetailReportQuerySerializer,
 )
+from sales.models import CashShift
 from tenants.models import Branch, UserProfile
 
 # Punto 11: exportación a Excel de "los 4 reportes existentes" (los que ya
@@ -43,6 +45,22 @@ _CASH_SHIFT_CLOSURES_COLUMNS = [
     ('Diferencia efectivo', 'cash_difference'), ('Vouchers esperados', 'expected_voucher_total'),
     ('Vouchers contados', 'actual_voucher_total'), ('Diferencia vouchers', 'voucher_difference'),
 ]
+
+# Observación de sesión (ronda "3 piezas", punto 3): drill-down de un solo
+# turno — tres hojas porque el reporte tiene tres tablas de forma distinta
+# (resumen de una fila, pagos por método, abonos a crédito), no una sola
+# tabla plana como el resto.
+_SHIFT_DETAIL_SUMMARY_COLUMNS = [
+    ('Sucursal', 'branch_name'), ('Caja', 'register_name'), ('Cajero', 'user_email'),
+    ('Apertura', 'opened_at'), ('Cierre', 'closed_at'), ('Fondo inicial', 'opening_balance'),
+    ('Efectivo esperado', 'expected_closing_balance'), ('Efectivo contado', 'actual_closing_balance'),
+    ('Diferencia efectivo', 'cash_difference'), ('Vouchers esperados', 'expected_voucher_total'),
+    ('Vouchers contados', 'actual_voucher_total'), ('Diferencia vouchers', 'voucher_difference'),
+    ('Ventas (cantidad)', 'sales_count'), ('Ventas (total)', 'sales_total'),
+    ('Abonos a crédito (total)', 'credit_payments_total'),
+]
+_SHIFT_DETAIL_PAYMENTS_COLUMNS = [('Método', 'method_label'), ('Total', 'total')]
+_SHIFT_DETAIL_CREDIT_COLUMNS = [('Cliente', 'client_name'), ('Monto', 'amount'), ('Fecha', 'created_at')]
 
 
 def _wants_excel(request):
@@ -217,6 +235,46 @@ class CashShiftClosuresReportView(APIView):
                 filename='cierres-de-caja.xlsx', columns=_CASH_SHIFT_CLOSURES_COLUMNS, rows=rows,
             )
         return Response(rows)
+
+
+class CashShiftDetailReportView(APIView):
+    """Drill-down de UN turno cerrado — no reemplaza
+    CashShiftClosuresReportView (el agregado por rango de fechas), es el
+    detalle de un solo renglón de esa lista. Mismo nivel de acceso que el
+    resto de reportes (ADMINISTRADOR + Supervisor)."""
+
+    permission_classes = [IsAuthenticated, IsAdministratorOrSupervisor]
+
+    def get(self, request):
+        query = ShiftDetailReportQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+
+        shift = (
+            CashShift.objects.for_user(request.user)
+            .filter(pk=query.validated_data['shift'])
+            .select_related('cash_register', 'cash_register__branch', 'user')
+            .first()
+        )
+        if shift is None:
+            return Response({'detail': 'Turno no encontrado.'}, status=404)
+        if shift.status != CashShift.Status.CLOSED:
+            return Response(
+                {'detail': 'Este turno todavía está abierto — el detalle solo aplica a turnos ya cerrados.'},
+                status=400,
+            )
+
+        data = services.cash_shift_detail(company=request.user.profile.company, shift=shift)
+        if _wants_excel(request):
+            _log_export(request, 'cierre-de-turno-detallado', {'shift': shift.id})
+            return build_multi_sheet_excel_response(
+                filename='cierre-de-turno-detallado.xlsx',
+                sheets=[
+                    ('Resumen', _SHIFT_DETAIL_SUMMARY_COLUMNS, [data]),
+                    ('Pagos por método', _SHIFT_DETAIL_PAYMENTS_COLUMNS, data['payments_by_method']),
+                    ('Abonos a crédito', _SHIFT_DETAIL_CREDIT_COLUMNS, data['credit_payments']),
+                ],
+            )
+        return Response(data)
 
 
 class SalesByPaymentMethodReportView(APIView):

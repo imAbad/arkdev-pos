@@ -10,12 +10,14 @@ import { t } from '@/i18n'
 import { listBranches } from '@/services/api/tenantsApi'
 import {
   exportCashShiftClosures,
+  exportCashShiftDetail,
   exportExpiredStock,
   exportInventoryValuation,
   exportSalesByCashier,
   exportSalesByCategory,
   exportSalesByProduct,
   getCashShiftClosures,
+  getCashShiftDetail,
   getExpiredStock,
   getInventoryValuation,
   getNearExpiryStock,
@@ -26,6 +28,7 @@ import {
 import type {
   Branch,
   CashShiftClosureRow,
+  CashShiftDetail,
   ExpiredStockRow,
   InventoryValuationRow,
   NearExpiryStockRow,
@@ -34,7 +37,7 @@ import type {
   SalesByProductRow,
 } from '@/types/api'
 
-type ReportKey = 'product' | 'category' | 'cashier' | 'inventory' | 'expired' | 'near-expiry' | 'closures'
+type ReportKey = 'product' | 'category' | 'cashier' | 'inventory' | 'expired' | 'near-expiry' | 'closures' | 'shift-detail'
 
 const TABS: { key: ReportKey; label: string; usesDateRange: boolean; usesDaysWindow?: boolean }[] = [
   { key: 'product', label: t.reports.tabSalesByProduct, usesDateRange: true },
@@ -44,6 +47,9 @@ const TABS: { key: ReportKey; label: string; usesDateRange: boolean; usesDaysWin
   { key: 'expired', label: t.reports.tabExpiredStock, usesDateRange: false },
   { key: 'near-expiry', label: t.reports.tabNearExpiry, usesDateRange: false, usesDaysWindow: true },
   { key: 'closures', label: t.reports.tabCashShiftClosures, usesDateRange: true },
+  // Drill-down de UN turno de la lista de arriba — mismo filtro de
+  // fecha/sucursal para elegirlo, no un reemplazo de "Cierres de caja".
+  { key: 'shift-detail', label: t.reports.tabShiftDetail, usesDateRange: true },
 ]
 
 type ReportData =
@@ -54,6 +60,7 @@ type ReportData =
   | { key: 'expired'; rows: ExpiredStockRow[] }
   | { key: 'near-expiry'; rows: NearExpiryStockRow[] }
   | { key: 'closures'; rows: CashShiftClosureRow[] }
+  | { key: 'shift-detail'; rows: CashShiftClosureRow[] }
 
 export function ReportsScreen() {
   const [activeReport, setActiveReport] = useState<ReportKey>('product')
@@ -67,6 +74,14 @@ export function ReportsScreen() {
   const [error, setError] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
+
+  // Sub-estado del tab "shift-detail": null = mostrando la lista de
+  // turnos para elegir uno (arriba); con valor = mostrando el detalle
+  // completo de ESE turno. No usa `data`/`loading`/`error` de arriba
+  // porque conviven — la lista sigue cargada detrás del detalle.
+  const [selectedShiftDetail, setSelectedShiftDetail] = useState<CashShiftDetail | null>(null)
+  const [shiftDetailLoading, setShiftDetailLoading] = useState(false)
+  const [shiftDetailError, setShiftDetailError] = useState<string | null>(null)
 
   useEffect(() => {
     listBranches().then(setBranches)
@@ -104,6 +119,9 @@ export function ReportsScreen() {
           break
         case 'closures':
           setData({ key: 'closures', rows: await getCashShiftClosures(filters) })
+          break
+        case 'shift-detail':
+          setData({ key: 'shift-detail', rows: await getCashShiftClosures(filters) })
           break
       }
     } catch (err) {
@@ -143,10 +161,37 @@ export function ReportsScreen() {
 
   useEffect(() => {
     void runQuery()
+    setSelectedShiftDetail(null)
+    setShiftDetailError(null)
     // Deliberado: solo re-consulta automático al cambiar de pestaña, no
     // en cada tecla de fecha/sucursal (para eso está "Aplicar filtros").
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeReport])
+
+  async function handleViewShiftDetail(shiftId: number) {
+    setShiftDetailLoading(true)
+    setShiftDetailError(null)
+    try {
+      setSelectedShiftDetail(await getCashShiftDetail(shiftId))
+    } catch (err) {
+      setShiftDetailError(apiErrorMessage(err, t.reports.errorGeneric))
+    } finally {
+      setShiftDetailLoading(false)
+    }
+  }
+
+  async function handleExportShiftDetail() {
+    if (!selectedShiftDetail) return
+    setExporting(true)
+    setExportError(null)
+    try {
+      await exportCashShiftDetail(selectedShiftDetail.shift_id)
+    } catch (err) {
+      setExportError(apiErrorMessage(err, t.reports.exportErrorGeneric))
+    } finally {
+      setExporting(false)
+    }
+  }
 
   const activeTab = TABS.find((tab) => tab.key === activeReport)!
 
@@ -172,6 +217,7 @@ export function ReportsScreen() {
           ))}
         </div>
 
+        {!(activeReport === 'shift-detail' && selectedShiftDetail) && (
         <Card>
           <div className="flex flex-wrap items-end gap-4">
             {activeTab.usesDateRange && (
@@ -235,7 +281,33 @@ export function ReportsScreen() {
             </p>
           )}
         </Card>
+        )}
 
+        {activeReport === 'shift-detail' && (shiftDetailLoading || shiftDetailError || selectedShiftDetail) && (
+          <Card>
+            {shiftDetailLoading && <p className="text-lg text-ink/70">{t.reports.loading}</p>}
+            {shiftDetailError && (
+              <p role="alert" className="text-lg font-medium text-cancel">
+                {shiftDetailError}
+              </p>
+            )}
+            {!shiftDetailLoading && selectedShiftDetail && (
+              <ShiftDetailView
+                detail={selectedShiftDetail}
+                exporting={exporting}
+                onBack={() => setSelectedShiftDetail(null)}
+                onExport={() => void handleExportShiftDetail()}
+              />
+            )}
+            {exportError && (
+              <p role="alert" className="mt-3 text-lg font-medium text-cancel">
+                {exportError}
+              </p>
+            )}
+          </Card>
+        )}
+
+        {!(activeReport === 'shift-detail' && selectedShiftDetail) && (
         <Card>
           {loading && <p className="text-lg text-ink/70">{t.reports.loading}</p>}
 
@@ -245,8 +317,13 @@ export function ReportsScreen() {
             </p>
           )}
 
-          {!loading && !error && data && <ReportTable data={data} />}
+          {!loading && !error && data && (
+            data.key === 'shift-detail'
+              ? <ShiftDetailPickerTable rows={data.rows} onViewDetail={(id) => void handleViewShiftDetail(id)} />
+              : <ReportTable data={data} />
+          )}
         </Card>
+        )}
     </div>
   )
 }
@@ -465,5 +542,132 @@ function CashShiftClosuresTable({ rows }: { rows: CashShiftClosureRow[] }) {
         </tr>
       ))}
     </TableShell>
+  )
+}
+
+// Mismos datos que CashShiftClosuresTable (misma consulta, ver runQuery)
+// pero con una acción de "Ver detalle" por fila en vez de mostrar todas
+// las columnas del arqueo — ese detalle completo es justo lo que
+// ShiftDetailView muestra al elegir un turno.
+function ShiftDetailPickerTable({ rows, onViewDetail }: { rows: CashShiftClosureRow[]; onViewDetail: (shiftId: number) => void }) {
+  if (rows.length === 0) {
+    return <p className="text-lg text-ink/70">{t.reports.empty}</p>
+  }
+  return (
+    <TableShell headers={[t.reports.colClosedAt, t.reports.colBranch, t.reports.colRegister, t.reports.colCashier, '']}>
+      {rows.map((row) => (
+        <tr key={row.id} className="border-b border-border">
+          <td className="px-3 py-2">{formatDateTime(row.closed_at)}</td>
+          <td className="px-3 py-2">{row.branch_name}</td>
+          <td className="px-3 py-2">{row.register_name}</td>
+          <td className="px-3 py-2">{row.user_email}</td>
+          <td className="px-3 py-2">
+            <Button type="button" variant="neutral" size="compact" onClick={() => onViewDetail(row.id)}>
+              {t.reports.shiftDetailViewDetail}
+            </Button>
+          </td>
+        </tr>
+      ))}
+    </TableShell>
+  )
+}
+
+function ShiftDetailView({
+  detail,
+  exporting,
+  onBack,
+  onExport,
+}: {
+  detail: CashShiftDetail
+  exporting: boolean
+  onBack: () => void
+  onExport: () => void
+}) {
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <Button type="button" variant="neutral" onClick={onBack}>
+          {t.reports.shiftDetailBackToList}
+        </Button>
+        <Button type="button" variant="neutral" disabled={exporting} onClick={onExport}>
+          {exporting ? t.reports.exporting : t.reports.exportToExcel}
+        </Button>
+      </div>
+
+      <div>
+        <h2 className="text-2xl font-bold text-ink">{t.reports.shiftDetailSummaryTitle}</h2>
+        <dl className="mt-3 grid grid-cols-2 gap-x-6 gap-y-2 text-lg md:grid-cols-3">
+          <DetailField label={t.reports.colBranch} value={detail.branch_name} />
+          <DetailField label={t.reports.colRegister} value={detail.register_name} />
+          <DetailField label={t.reports.colCashier} value={detail.user_email ?? '—'} />
+          <DetailField label={t.reports.colClosedAt} value={formatDateTime(detail.closed_at)} />
+          <DetailField label={t.reports.colOpeningBalance} value={formatCurrency(detail.opening_balance)} />
+          <DetailField label={t.reports.shiftDetailSalesCount} value={String(detail.sales_count)} />
+          <DetailField label={t.reports.shiftDetailSalesTotal} value={formatCurrency(detail.sales_total)} />
+          <DetailField label={t.reports.colExpectedCash} value={formatCurrency(detail.expected_closing_balance)} />
+          <DetailField label={t.reports.colActualCash} value={formatCurrency(detail.actual_closing_balance)} />
+          <DetailField
+            label={t.reports.colCashDifference}
+            value={formatCurrency(detail.cash_difference)}
+            emphasize={Number(detail.cash_difference) !== 0}
+          />
+          <DetailField label={t.reports.colExpectedVoucher} value={formatCurrency(detail.expected_voucher_total)} />
+          <DetailField label={t.reports.colActualVoucher} value={formatCurrency(detail.actual_voucher_total)} />
+          <DetailField
+            label={t.reports.colVoucherDifference}
+            value={formatCurrency(detail.voucher_difference)}
+            emphasize={Number(detail.voucher_difference) !== 0}
+          />
+        </dl>
+      </div>
+
+      <div>
+        <h2 className="text-2xl font-bold text-ink">{t.reports.shiftDetailPaymentsTitle}</h2>
+        {detail.payments_by_method.length === 0 ? (
+          <p className="mt-2 text-lg text-ink/70">{t.reports.empty}</p>
+        ) : (
+          <TableShell headers={[t.reports.colMethod, t.reports.colTotal]}>
+            {detail.payments_by_method.map((row) => (
+              <tr key={row.method} className="border-b border-border">
+                <td className="px-3 py-2">{row.method_label}</td>
+                <td className="px-3 py-2">{formatCurrency(row.total)}</td>
+              </tr>
+            ))}
+          </TableShell>
+        )}
+      </div>
+
+      <div>
+        <h2 className="text-2xl font-bold text-ink">{t.reports.shiftDetailCreditTitle}</h2>
+        <p className="mt-1 text-base text-ink/60">{t.reports.shiftDetailCreditNote}</p>
+        {detail.credit_payments.length === 0 ? (
+          <p className="mt-2 text-lg text-ink/70">{t.reports.shiftDetailNoCreditPayments}</p>
+        ) : (
+          <>
+            <TableShell headers={[t.reports.colClient, t.reports.colAmount, t.reports.colDateTime]}>
+              {detail.credit_payments.map((row) => (
+                <tr key={row.id} className="border-b border-border">
+                  <td className="px-3 py-2">{row.client_name}</td>
+                  <td className="px-3 py-2">{formatCurrency(row.amount)}</td>
+                  <td className="px-3 py-2">{formatDateTime(row.created_at)}</td>
+                </tr>
+              ))}
+            </TableShell>
+            <p className="mt-4 text-xl font-bold text-ink">
+              {t.reports.total}: {formatCurrency(detail.credit_payments_total)}
+            </p>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function DetailField({ label, value, emphasize = false }: { label: string; value: string; emphasize?: boolean }) {
+  return (
+    <div>
+      <dt className="text-sm font-medium text-ink/60">{label}</dt>
+      <dd className={cn('font-semibold text-ink', emphasize && 'text-cancel')}>{value}</dd>
+    </div>
   )
 }

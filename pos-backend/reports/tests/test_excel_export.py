@@ -15,7 +15,7 @@ from rest_framework.test import APITestCase
 
 from audit.models import AuditLog
 from catalog.tests.factories import create_batch
-from reports.excel import build_excel_response
+from reports.excel import build_excel_response, build_multi_sheet_excel_response
 from sales.services import close_shift
 from sales.tests.factories import create_checkout_context, make_sale
 from tenants.models import UserProfile
@@ -52,6 +52,29 @@ class BuildExcelResponseTests(TestCase):
         value = list(workbook.active.iter_rows(values_only=True))[1][0]
         self.assertEqual(value, 120.50)
         self.assertIsInstance(value, float)
+
+
+class BuildMultiSheetExcelResponseTests(TestCase):
+    def test_writes_one_sheet_per_section_with_its_own_header_and_rows(self):
+        response = build_multi_sheet_excel_response(
+            filename='detalle.xlsx',
+            sheets=[
+                ('Resumen', [('Cajero', 'user_email')], [{'user_email': 'cajero@donchuy.test'}]),
+                ('Pagos por método', [('Método', 'method_label'), ('Total', 'total')], [
+                    {'method_label': 'Efectivo', 'total': Decimal('100.00')},
+                ]),
+            ],
+        )
+        workbook = load_workbook(BytesIO(response.content))
+        self.assertEqual(workbook.sheetnames, ['Resumen', 'Pagos por método'])
+        self.assertEqual(
+            list(workbook['Resumen'].iter_rows(values_only=True)),
+            [('Cajero',), ('cajero@donchuy.test',)],
+        )
+        self.assertEqual(
+            list(workbook['Pagos por método'].iter_rows(values_only=True)),
+            [('Método', 'Total'), ('Efectivo', 100.00)],
+        )
 
 
 class ReportExcelExportApiTests(APITestCase):
@@ -133,6 +156,22 @@ class ReportExcelExportApiTests(APITestCase):
         self.assertIn('Sucursal', header)
         self.assertIn('Diferencia efectivo', header)
 
+    def test_cash_shift_detail_export_returns_a_multi_sheet_workbook(self):
+        make_sale(self.ctx['shift'], self.ctx['product'], unit_price=Decimal('100.00'))
+        close_shift(shift=self.ctx['shift'], closing_user=self.ctx['user'], actual_closing_balance=Decimal('0'))
+        self._auth(self.admin)
+
+        response = self.client.get(
+            '/api/v1/reports/cash-shift-detail/', {'shift': self.ctx['shift'].id, 'export': 'xlsx'},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        workbook = load_workbook(BytesIO(response.content))
+        self.assertEqual(workbook.sheetnames, ['Resumen', 'Pagos por método', 'Abonos a crédito'])
+        summary_header = list(workbook['Resumen'].iter_rows(values_only=True))[0]
+        self.assertIn('Ventas (total)', summary_header)
+        payments_rows = list(workbook['Pagos por método'].iter_rows(values_only=True))
+        self.assertEqual(payments_rows[1][0], 'Efectivo')
+
     def test_export_requires_the_same_access_as_viewing(self):
         # Mismo gate que las 4 vistas ya prueban para JSON
         # (ReportsApiPermissionTests) — un cajero plano tampoco puede
@@ -192,6 +231,16 @@ class ExportAuditLogTests(APITestCase):
         entry = AuditLog.objects.get(action='report.exported')
         self.assertEqual(entry.changes['report'], 'valuacion-de-inventario')
         self.assertEqual(entry.changes['branch'], self.ctx['branch'].name)
+
+    def test_exporting_cash_shift_detail_logs_which_shift(self):
+        close_shift(shift=self.ctx['shift'], closing_user=self.ctx['user'], actual_closing_balance=Decimal('0'))
+        self._auth(self.admin)
+        self.client.get(
+            '/api/v1/reports/cash-shift-detail/', {'shift': self.ctx['shift'].id, 'export': 'xlsx'},
+        )
+        entry = AuditLog.objects.get(action='report.exported')
+        self.assertEqual(entry.changes['report'], 'cierre-de-turno-detallado')
+        self.assertEqual(entry.changes['shift'], self.ctx['shift'].id)
 
     def test_viewing_json_without_exporting_does_not_log_anything(self):
         self._auth(self.admin)
