@@ -25,6 +25,7 @@ export type Role = 'CAJERO' | 'ADMINISTRADOR'
 export interface UserProfile {
   id: number
   email: string
+  username: string | null
   is_active: boolean
   branch: number
   role: Role
@@ -32,6 +33,7 @@ export interface UserProfile {
     handles_cash?: boolean
     can_authorize_exceptions?: boolean
   }
+  date_of_birth: string | null
   company: number
 }
 

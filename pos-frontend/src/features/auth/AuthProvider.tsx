@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import axios from 'axios'
-import { login as loginRequest } from '@/services/api/authApi'
+import { login as loginRequest, loginWithUsername as loginWithUsernameRequest } from '@/services/api/authApi'
 import { getBranch, getMyCompanySettings, getMyProfile } from '@/services/api/tenantsApi'
 import { clearAccessToken, getAccessToken, setAccessToken } from '@/lib/auth-storage'
 import { onSessionExpired } from '@/lib/api-client'
@@ -22,6 +22,17 @@ export function loginErrorMessage(error: unknown): string {
   return t.login.errorGeneric
 }
 
+// Mismo principio que loginErrorMessage: el 401 de
+// tenants.viewsets.UsernameLoginView ya viene en español (ver
+// UsernameLoginError), pero se mapea igual por consistencia y para no
+// depender de que el texto del backend no cambie nunca.
+export function usernameLoginErrorMessage(error: unknown): string {
+  if (axios.isAxiosError(error) && error.response?.status === 401) {
+    return t.login.usernameErrorInvalid
+  }
+  return t.login.errorGeneric
+}
+
 export type AuthStatus = 'loading' | 'unauthenticated' | 'authenticated'
 
 export interface AuthContextValue {
@@ -30,6 +41,7 @@ export interface AuthContextValue {
   branch: Branch | null
   companySettings: CompanySettings | null
   login: (email: string, password: string) => Promise<boolean>
+  loginWithUsername: (username: string, dateOfBirth: string) => Promise<boolean>
   loginError: string | null
   loggingIn: boolean
   logout: () => void
@@ -129,6 +141,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  const loginWithUsername = useCallback(async (username: string, dateOfBirth: string) => {
+    setLoggingIn(true)
+    setLoginError(null)
+    setSessionExpiredNotice(null)
+    try {
+      const tokens = await loginWithUsernameRequest(username, dateOfBirth)
+      setAccessToken(tokens.access)
+      const context = await loadTenantContext()
+      setProfile(context.profile)
+      setBranch(context.branch)
+      setCompanySettings(context.companySettings)
+      setStatus('authenticated')
+      return true
+    } catch (error) {
+      clearAccessToken()
+      setLoginError(usernameLoginErrorMessage(error))
+      return false
+    } finally {
+      setLoggingIn(false)
+    }
+  }, [])
+
   const refreshCompanySettings = useCallback(async () => {
     setCompanySettings(await getMyCompanySettings())
   }, [])
@@ -144,12 +178,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AuthContextValue>(
     () => ({
-      status, profile, branch, companySettings, login, loginError, loggingIn, logout, sessionExpiredNotice,
-      refreshCompanySettings,
+      status, profile, branch, companySettings, login, loginWithUsername, loginError, loggingIn, logout,
+      sessionExpiredNotice, refreshCompanySettings,
     }),
     [
-      status, profile, branch, companySettings, login, loginError, loggingIn, logout, sessionExpiredNotice,
-      refreshCompanySettings,
+      status, profile, branch, companySettings, login, loginWithUsername, loginError, loggingIn, logout,
+      sessionExpiredNotice, refreshCompanySettings,
     ],
   )
 

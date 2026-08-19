@@ -22,13 +22,16 @@ def create_user_with_profile(
     role=UserProfile.Role.CAJERO,
     capabilities=None,
     password='testpass123',
+    username=None,
+    date_of_birth=None,
 ):
-    user = User.objects.create_user(email=email, password=password)
+    user = User.objects.create_user(email=email, password=password, username=username)
     profile = UserProfile.objects.create(
         user=user,
         branch=branch,
         role=role,
         capabilities=capabilities or {},
+        date_of_birth=date_of_birth,
     )
     return user, profile
 

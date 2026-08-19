@@ -4,12 +4,15 @@ from django.contrib import admin
 from django.urls import include, path
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-from tenants.viewsets import RequestSupervisorAuthorizationView
+from tenants.viewsets import RequestSupervisorAuthorizationView, UsernameLoginView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/v1/auth/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/v1/auth/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    # Punto 5: login alterno de mostrador — email+contraseña (arriba)
+    # sigue siendo el login real y principal, sin ningún cambio.
+    path('api/v1/auth/token/username/', UsernameLoginView.as_view(), name='token_username_login'),
     path(
         'api/v1/auth/authorize-exception/',
         RequestSupervisorAuthorizationView.as_view(),

@@ -14,22 +14,74 @@ class AuthorizationError(Exception):
     de supervisor (-> 403)."""
 
 
+class UsernameLoginError(Exception):
+    """Usuario o fecha de nacimiento no coinciden (-> 401)."""
+
+
+def request_username_login(*, username, date_of_birth):
+    """Login alterno pensado para el mostrador (punto 5 de esta ronda):
+    username + fecha de nacimiento en vez de email + contraseña.
+
+    Nota de seguridad, deliberada y documentada a propósito (no un
+    descuido): este mecanismo es MÁS DÉBIL que contraseña — la fecha de
+    nacimiento es adivinable por alguien cercano a la persona (familia,
+    compañeros de trabajo). Se acepta como decisión consciente de
+    conveniencia para el mostrador, no como reemplazo de seguridad real:
+    la cuenta sigue protegida por su contraseña real para cualquier
+    acción que la requiera (ej. autorizar una excepción de supervisor,
+    sales.services.cancel_sale). No se usa para nada más sensible que
+    entrar a vender.
+
+    Mismo tipo de token que el login normal (SimpleJWT) — no un sistema
+    de auth paralelo, solo una segunda forma de LLEGAR al mismo token.
+    Cada intento se audita (éxito o fallo) cuando hay un tenant real al
+    que atribuirlo — AuditLog.company es NOT NULL (BaseTenantModel), así
+    que un username que no le pertenece a nadie no genera ningún registro
+    (no hay tenant al que asociarlo), pero un usuario real que falla por
+    fecha incorrecta o está inactivo sí queda auditado en su tenant.
+    """
+    user = User.objects.filter(username__iexact=username).select_related('profile').first()
+
+    def _deny():
+        if user is not None and hasattr(user, 'profile'):
+            log_action(
+                company=user.profile.company, user=user, action='username_login.denied',
+                changes={'username': username},
+            )
+        raise UsernameLoginError('Usuario o fecha de nacimiento incorrectos.')
+
+    if user is None or not hasattr(user, 'profile') or not user.is_active:
+        _deny()
+    if user.profile.date_of_birth is None or user.profile.date_of_birth != date_of_birth:
+        _deny()
+
+    log_action(
+        company=user.profile.company, user=user, action='username_login.granted', changes={'username': username},
+    )
+    return user
+
+
 class UserManagementError(Exception):
     """Error de regla de negocio al crear/desactivar un usuario del tenant
     (-> 400)."""
 
 
-def create_tenant_user(*, email, password, branch, role, capabilities=None, actor=None):
+def create_tenant_user(*, email, password, branch, role, capabilities=None, actor=None, username=None, date_of_birth=None):
     """Crea el `User` (login) y su `UserProfile` (branch/role/capabilities)
     en una sola transacción — no tiene sentido que exista el uno sin el
     otro (ver UserProfile.save(): company se deriva de branch, así que
     basta con pasar un branch ya acotado al tenant del actor -mismo
     criterio anti-IDOR que reports._resolve_branch, aplicado vía
-    TenantScopedFieldsMixin en el serializer-)."""
+    TenantScopedFieldsMixin en el serializer-).
+
+    `username`/`date_of_birth` (punto 5): requeridos por
+    UserCreateSerializer para altas nuevas, pero opcionales aquí a nivel
+    de función — otros callers (seed_demo_data, etc.) no tienen por qué
+    pasarlos."""
     with transaction.atomic():
-        user = User.objects.create_user(email=email, password=password)
+        user = User.objects.create_user(email=email, password=password, username=username)
         profile = UserProfile.objects.create(
-            user=user, branch=branch, role=role, capabilities=capabilities or {},
+            user=user, branch=branch, role=role, capabilities=capabilities or {}, date_of_birth=date_of_birth,
         )
     log_action(
         company=profile.company, user=actor, action='user_management.created',

@@ -61,6 +61,10 @@ export interface CreateUserInput {
   branch: number
   role: Role
   capabilities?: UserProfile['capabilities']
+  // Punto 5: requeridos al dar de alta — sin los dos, el login alterno
+  // por username nunca podría funcionar para esta persona.
+  username: string
+  date_of_birth: string
 }
 
 export async function createUser(input: CreateUserInput): Promise<UserProfile> {

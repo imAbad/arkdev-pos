@@ -10,15 +10,31 @@ from tenants.managers import UserManager
 
 
 class User(AbstractUser):
-    """Usuario con login por email — no username (CLAUDE.md #3).
+    """Usuario con login por email — no username como identificador
+    principal (CLAUDE.md #3).
 
-    `username` global colisionaba entre tenants en pharma_core (ver
-    decisiones_post_auditoria.md #5). Se elimina y se usa `email`, que ya
-    es naturalmente único a nivel de todo el sistema.
+    El `username` original de AbstractUser colisionaba entre tenants en
+    pharma_core (ver decisiones_post_auditoria.md #5) — por eso se usa
+    `email` como `USERNAME_FIELD`, sin excepción, sin ningún cambio en
+    este punto.
+
+    Observación de sesión, punto 5: el `username` de abajo NO es aquel
+    campo resucitado — es uno nuevo y deliberadamente distinto: un alias
+    corto, único A NIVEL SISTEMA (mismo principio que ya usa `email`, no
+    por tenant, así que no repite el bug de pharma_core), solo para un
+    segundo camino de login pensado para el mostrador (ver
+    `request_username_login` en tenants.services y su nota de seguridad
+    ahí). email+contraseña sigue siendo el login real y principal, intacto.
     """
 
-    username = None
     email = models.EmailField('email', unique=True)
+
+    # NULL (no CharField vacío) para usuarios ya existentes antes de este
+    # punto, que entraron por email y nunca configuraron uno — unique=True
+    # con null=True permite múltiples NULL sin chocar entre sí (Postgres
+    # no considera NULL igual a NULL para unicidad), pero si alguien SÍ
+    # define un username, tiene que ser único en todo el sistema.
+    username = models.CharField(max_length=30, unique=True, null=True, blank=True)
 
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = []
@@ -105,6 +121,10 @@ class UserProfile(BaseTenantModel):
     )
     role = models.CharField(max_length=20, choices=Role.choices)
     capabilities = models.JSONField(default=dict, blank=True)
+    # Observación de sesión, punto 5: solo se usa para validar el login
+    # alterno por username (ver tenants.services.request_username_login)
+    # — null para perfiles ya existentes que nunca la capturaron.
+    date_of_birth = models.DateField(null=True, blank=True)
 
     def save(self, *args, **kwargs):
         # company se deriva de branch para no depender de que quien crea el

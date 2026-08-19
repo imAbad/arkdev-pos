@@ -26,12 +26,13 @@ class CompanySettingsSerializer(serializers.ModelSerializer):
 class UserProfileSerializer(TenantScopedFieldsMixin, serializers.ModelSerializer):
     email = serializers.EmailField(source='user.email', read_only=True)
     is_active = serializers.BooleanField(source='user.is_active', read_only=True)
+    username = serializers.CharField(source='user.username', read_only=True)
 
     tenant_scoped_fields = ('branch',)
 
     class Meta:
         model = UserProfile
-        fields = ['id', 'email', 'is_active', 'branch', 'role', 'capabilities', 'company']
+        fields = ['id', 'email', 'username', 'is_active', 'branch', 'role', 'capabilities', 'date_of_birth', 'company']
         read_only_fields = ['company']
 
 
@@ -46,6 +47,11 @@ class UserCreateSerializer(TenantScopedFieldsMixin, serializers.Serializer):
     branch = serializers.PrimaryKeyRelatedField(queryset=Branch.objects.all())
     role = serializers.ChoiceField(choices=UserProfile.Role.choices)
     capabilities = serializers.JSONField(required=False, default=dict)
+    # Observación de sesión, punto 5: requeridos al dar de alta (no
+    # opcionales acá, a diferencia del modelo) — sin los dos, el login
+    # alterno por username nunca podría funcionar para esta persona.
+    username = serializers.CharField(max_length=30)
+    date_of_birth = serializers.DateField()
 
     tenant_scoped_fields = ('branch',)
 
@@ -54,9 +60,23 @@ class UserCreateSerializer(TenantScopedFieldsMixin, serializers.Serializer):
             raise serializers.ValidationError('Ya existe un usuario con este correo.')
         return value
 
+    def validate_username(self, value):
+        if User.objects.filter(username__iexact=value).exists():
+            raise serializers.ValidationError('Ya existe un usuario con este nombre de usuario.')
+        return value
+
     def validate_password(self, value):
         validate_password(value)
         return value
+
+
+class UsernameLoginInputSerializer(serializers.Serializer):
+    """Punto 5: login alterno de mostrador — username + fecha de
+    nacimiento en vez de email + contraseña (ver tenants.services.
+    request_username_login para la nota de seguridad completa)."""
+
+    username = serializers.CharField()
+    date_of_birth = serializers.DateField()
 
 
 class SupervisorAuthorizationRequestSerializer(serializers.Serializer):

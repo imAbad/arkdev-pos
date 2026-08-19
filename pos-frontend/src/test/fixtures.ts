@@ -36,10 +36,12 @@ export function makeProfile(overrides: Partial<UserProfile> = {}): UserProfile {
   return {
     id: 1,
     email: 'cajero@donchuy.test',
+    username: 'cajero1',
     is_active: true,
     branch: 1,
     role: 'CAJERO',
     capabilities: { handles_cash: true },
+    date_of_birth: '1998-06-20',
     company: 1,
     ...overrides,
   }

@@ -20,6 +20,7 @@ export function fakeAuthValue(overrides: Partial<AuthContextValue> = {}): AuthCo
     branch: makeBranch(),
     companySettings: makeCompanySettings(),
     login: async () => true,
+    loginWithUsername: async () => true,
     loginError: null,
     loggingIn: false,
     logout: () => {},

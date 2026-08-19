@@ -77,15 +77,19 @@ class CreateTenantUserApiTests(APITestCase):
             {
                 'email': 'nuevo@donchuy.test', 'password': 'ClaveSegura2026!',
                 'branch': self.tenant_a['branch'].id, 'role': 'CAJERO', 'capabilities': {'handles_cash': True},
+                'username': 'nuevo_cajero', 'date_of_birth': '1995-03-14',
             },
             format='json',
         )
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
         self.assertEqual(response.data['email'], 'nuevo@donchuy.test')
+        self.assertEqual(response.data['username'], 'nuevo_cajero')
         self.assertTrue(response.data['is_active'])
 
         created_user = User.objects.get(email='nuevo@donchuy.test')
         self.assertTrue(created_user.check_password('ClaveSegura2026!'))
+        self.assertEqual(created_user.username, 'nuevo_cajero')
+        self.assertEqual(created_user.profile.date_of_birth.isoformat(), '1995-03-14')
         self.assertEqual(created_user.profile.company_id, self.tenant_a['company'].id)
 
     def test_cannot_create_a_user_pointing_to_another_tenants_branch(self):
@@ -95,6 +99,7 @@ class CreateTenantUserApiTests(APITestCase):
             {
                 'email': 'colado@donchuy.test', 'password': 'ClaveSegura2026!',
                 'branch': self.tenant_b['branch'].id, 'role': 'CAJERO',
+                'username': 'colado', 'date_of_birth': '1995-03-14',
             },
             format='json',
         )
@@ -108,10 +113,28 @@ class CreateTenantUserApiTests(APITestCase):
             {
                 'email': 'admin@donchuy.test', 'password': 'ClaveSegura2026!',
                 'branch': self.tenant_a['branch'].id, 'role': 'CAJERO',
+                'username': 'otro_username', 'date_of_birth': '1995-03-14',
             },
             format='json',
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_rejects_duplicate_username_with_clean_400(self):
+        # Observación de sesión, punto 5: único a nivel SISTEMA, no solo
+        # por tenant — se prueba contra un username ya usado en tenant_b.
+        create_user_with_profile('otro-tenant@estrella.test', self.tenant_b['branch'], username='ya_existe')
+        self._auth(self.tenant_a['user'])
+        response = self.client.post(
+            '/api/v1/user-profiles/',
+            {
+                'email': 'nuevo3@donchuy.test', 'password': 'ClaveSegura2026!',
+                'branch': self.tenant_a['branch'].id, 'role': 'CAJERO',
+                'username': 'ya_existe', 'date_of_birth': '1995-03-14',
+            },
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(User.objects.filter(email='nuevo3@donchuy.test').exists())
 
     def test_rejects_a_weak_password_with_clean_400(self):
         self._auth(self.tenant_a['user'])
@@ -120,6 +143,7 @@ class CreateTenantUserApiTests(APITestCase):
             {
                 'email': 'nuevo2@donchuy.test', 'password': '123456',
                 'branch': self.tenant_a['branch'].id, 'role': 'CAJERO',
+                'username': 'nuevo2', 'date_of_birth': '1995-03-14',
             },
             format='json',
         )
@@ -136,6 +160,7 @@ class CreateTenantUserApiTests(APITestCase):
             {
                 'email': 'intento@donchuy.test', 'password': 'ClaveSegura2026!',
                 'branch': self.tenant_a['branch'].id, 'role': 'CAJERO',
+                'username': 'intento', 'date_of_birth': '1995-03-14',
             },
             format='json',
         )

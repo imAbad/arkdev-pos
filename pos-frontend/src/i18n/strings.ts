@@ -29,6 +29,15 @@ export const es = {
     submitting: 'Entrando…',
     errorInvalid: 'Correo o contraseña incorrectos.',
     errorGeneric: 'No se pudo iniciar sesión. Intenta de nuevo.',
+    // Punto 5: login alterno de mostrador, junto al de correo+contraseña
+    // (ninguno oculta al otro) — ver tenants.services.request_username_login.
+    usernameTab: 'Entrar con usuario',
+    usernameSubtitle: 'Para el mostrador: usuario y fecha de nacimiento.',
+    username: 'Usuario',
+    dateOfBirth: 'Fecha de nacimiento',
+    usernameSubmit: 'Entrar con usuario',
+    usernameErrorInvalid: 'Usuario o fecha de nacimiento incorrectos.',
+    divider: 'o',
   },
   shift: {
     title: 'Abrir turno',
@@ -240,6 +249,7 @@ export const es = {
     loading: 'Cargando…',
     errorGeneric: 'No se pudo cargar la lista de usuarios. Intenta de nuevo.',
     colEmail: 'Correo',
+    colUsername: 'Usuario',
     colRole: 'Rol',
     colBranch: 'Sucursal',
     colCapabilities: 'Permisos',
@@ -255,6 +265,8 @@ export const es = {
     newUserTitle: 'Nuevo usuario',
     email: 'Correo',
     password: 'Contraseña',
+    username: 'Usuario (para entrar en el mostrador)',
+    dateOfBirth: 'Fecha de nacimiento',
     role: 'Rol',
     roleCajero: 'Cajero',
     roleAdministrador: 'Administrador',

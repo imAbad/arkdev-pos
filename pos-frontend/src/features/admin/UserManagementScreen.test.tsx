@@ -1,7 +1,7 @@
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
 import userEvent from '@testing-library/user-event'
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { AuthContext } from '@/features/auth/AuthProvider'
 import { fakeAuthValue } from '@/test/test-utils'
 import { server } from '@/test/server'
@@ -16,9 +16,9 @@ const BRANCHES_URL = `${BASE}/branches/`
 
 const CENTRO = makeBranch({ id: 1, name: 'Centro' })
 
-const ADMIN_PROFILE = { id: 1, email: 'admin@donchuy.test', is_active: true, branch: 1, role: 'ADMINISTRADOR' as const, capabilities: {}, company: 1 }
-const CAJERO_PROFILE = { id: 2, email: 'cajero@donchuy.test', is_active: true, branch: 1, role: 'CAJERO' as const, capabilities: { handles_cash: true }, company: 1 }
-const INACTIVE_PROFILE = { id: 3, email: 'exempleado@donchuy.test', is_active: false, branch: 1, role: 'CAJERO' as const, capabilities: {}, company: 1 }
+const ADMIN_PROFILE = { id: 1, email: 'admin@donchuy.test', username: 'admin1', is_active: true, branch: 1, role: 'ADMINISTRADOR' as const, capabilities: {}, date_of_birth: '1980-01-01', company: 1 }
+const CAJERO_PROFILE = { id: 2, email: 'cajero@donchuy.test', username: 'cajero1', is_active: true, branch: 1, role: 'CAJERO' as const, capabilities: { handles_cash: true }, date_of_birth: '1998-06-20', company: 1 }
+const INACTIVE_PROFILE = { id: 3, email: 'exempleado@donchuy.test', username: null, is_active: false, branch: 1, role: 'CAJERO' as const, capabilities: {}, date_of_birth: null, company: 1 }
 
 function mockLists(users: UserProfile[] = [ADMIN_PROFILE, CAJERO_PROFILE]) {
   server.use(
@@ -59,7 +59,10 @@ describe('UserManagementScreen', () => {
       http.post(USERS_URL, async ({ request }) => {
         createdBody = await request.json()
         return HttpResponse.json(
-          { id: 99, email: 'nuevo@donchuy.test', is_active: true, branch: 1, role: 'CAJERO', capabilities: { handles_cash: true }, company: 1 },
+          {
+            id: 99, email: 'nuevo@donchuy.test', username: 'nuevo_cajero', is_active: true, branch: 1,
+            role: 'CAJERO', capabilities: { handles_cash: true }, date_of_birth: '1998-06-20', company: 1,
+          },
           { status: 201 },
         )
       }),
@@ -69,12 +72,16 @@ describe('UserManagementScreen', () => {
 
     await userEvent.type(screen.getByLabelText(t.users.email), 'nuevo@donchuy.test')
     await userEvent.type(screen.getByLabelText(t.users.password), 'ClaveSegura2026!')
+    await userEvent.type(screen.getByLabelText(t.users.username), 'nuevo_cajero')
+    fireEvent.change(screen.getByLabelText(t.users.dateOfBirth), { target: { value: '1998-06-20' } })
     await userEvent.selectOptions(screen.getByLabelText(t.users.branch), '1')
     await userEvent.click(screen.getByLabelText(t.users.handlesCash))
     await userEvent.click(screen.getByRole('button', { name: t.users.create }))
 
     expect(await screen.findByText(t.users.createdNotice)).toBeInTheDocument()
-    expect(createdBody).toMatchObject({ email: 'nuevo@donchuy.test', branch: 1, role: 'CAJERO' })
+    expect(createdBody).toMatchObject({
+      email: 'nuevo@donchuy.test', branch: 1, role: 'CAJERO', username: 'nuevo_cajero', date_of_birth: '1998-06-20',
+    })
   })
 
   it('muestra un error legible cuando la creación falla (ej. correo duplicado)', async () => {
@@ -87,6 +94,8 @@ describe('UserManagementScreen', () => {
 
     await userEvent.type(screen.getByLabelText(t.users.email), 'admin@donchuy.test')
     await userEvent.type(screen.getByLabelText(t.users.password), 'ClaveSegura2026!')
+    await userEvent.type(screen.getByLabelText(t.users.username), 'otro_username')
+    fireEvent.change(screen.getByLabelText(t.users.dateOfBirth), { target: { value: '1998-06-20' } })
     await userEvent.selectOptions(screen.getByLabelText(t.users.branch), '1')
     await userEvent.click(screen.getByRole('button', { name: t.users.create }))
 

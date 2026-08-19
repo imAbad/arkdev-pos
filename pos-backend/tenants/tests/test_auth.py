@@ -10,9 +10,16 @@ User = get_user_model()
 
 class EmailLoginModelTests(TestCase):
     def test_username_field_is_email(self):
+        # email sigue siendo USERNAME_FIELD, sin excepción — eso no
+        # cambió. `username` SÍ existe ahora como campo (observación de
+        # sesión, punto 5): un alias corto y opcional, único a nivel
+        # sistema, solo para el login alterno de mostrador — no es el
+        # username de AbstractUser que colisionaba entre tenants en
+        # pharma_core (ver tenants.models.User, docstring completo), y no
+        # reemplaza a email como identificador de login real.
         self.assertEqual(User.USERNAME_FIELD, 'email')
         field_names = [f.name for f in User._meta.get_fields()]
-        self.assertNotIn('username', field_names)
+        self.assertIn('username', field_names)
 
     def test_two_tenants_can_reuse_the_same_local_part(self):
         # El bug original en pharma_core: dos tenants no podían tener ambos

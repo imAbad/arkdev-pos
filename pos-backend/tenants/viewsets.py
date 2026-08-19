@@ -1,8 +1,9 @@
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from core.mixins import TenantScopedViewSetMixin
 from core.permissions import IsAdministrator, IsAdministratorOrReadOnly
@@ -13,15 +14,18 @@ from tenants.serializers import (
     SupervisorAuthorizationRequestSerializer,
     SupervisorAuthorizationSerializer,
     UserCreateSerializer,
+    UsernameLoginInputSerializer,
     UserProfileSerializer,
 )
 from tenants.services import (
     AuthorizationError,
     UserManagementError,
+    UsernameLoginError,
     create_tenant_user,
     deactivate_user,
     reactivate_user,
     request_supervisor_authorization,
+    request_username_login,
 )
 
 
@@ -85,6 +89,7 @@ class UserProfileViewSet(TenantScopedViewSetMixin, viewsets.ModelViewSet):
         profile = create_tenant_user(
             email=data['email'], password=data['password'], branch=data['branch'],
             role=data['role'], capabilities=data.get('capabilities'), actor=request.user,
+            username=data['username'], date_of_birth=data['date_of_birth'],
         )
         return Response(
             UserProfileSerializer(profile, context={'request': request}).data,
@@ -137,3 +142,26 @@ class RequestSupervisorAuthorizationView(APIView):
             SupervisorAuthorizationSerializer(authorization).data,
             status=status.HTTP_201_CREATED,
         )
+
+
+class UsernameLoginView(APIView):
+    """Punto 5: login alterno de mostrador (username + fecha de
+    nacimiento) — emite el mismo tipo de token que
+    TokenObtainPairView (SimpleJWT), no un sistema de auth paralelo. Sin
+    autenticar (AllowAny): es justo la puerta de entrada, como
+    /auth/token/."""
+
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        input_serializer = UsernameLoginInputSerializer(data=request.data)
+        input_serializer.is_valid(raise_exception=True)
+        data = input_serializer.validated_data
+
+        try:
+            user = request_username_login(username=data['username'], date_of_birth=data['date_of_birth'])
+        except UsernameLoginError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_401_UNAUTHORIZED)
+
+        refresh = RefreshToken.for_user(user)
+        return Response({'access': str(refresh.access_token), 'refresh': str(refresh)})

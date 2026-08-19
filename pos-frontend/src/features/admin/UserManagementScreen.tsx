@@ -96,6 +96,7 @@ export function UserManagementScreen() {
               <thead>
                 <tr className="border-b-2 border-border">
                   <th className="whitespace-nowrap px-3 py-2 font-semibold text-ink">{t.users.colEmail}</th>
+                  <th className="whitespace-nowrap px-3 py-2 font-semibold text-ink">{t.users.colUsername}</th>
                   <th className="whitespace-nowrap px-3 py-2 font-semibold text-ink">{t.users.colRole}</th>
                   <th className="whitespace-nowrap px-3 py-2 font-semibold text-ink">{t.users.colBranch}</th>
                   <th className="whitespace-nowrap px-3 py-2 font-semibold text-ink">{t.users.colCapabilities}</th>
@@ -107,6 +108,7 @@ export function UserManagementScreen() {
                 {users.map((profile) => (
                   <tr key={profile.id} className="border-b border-border">
                     <td className="px-3 py-2">{profile.email}</td>
+                    <td className="px-3 py-2">{profile.username ?? '—'}</td>
                     <td className="px-3 py-2">{profile.role === 'ADMINISTRADOR' ? t.users.roleAdministrador : t.users.roleCajero}</td>
                     <td className="px-3 py-2">{branchName(profile.branch)}</td>
                     <td className="px-3 py-2">
@@ -156,6 +158,8 @@ export function UserManagementScreen() {
 function NewUserForm({ branches, onCreated }: { branches: Branch[]; onCreated: () => void }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [username, setUsername] = useState('')
+  const [dateOfBirth, setDateOfBirth] = useState('')
   const [role, setRole] = useState<Role>('CAJERO')
   const [branchId, setBranchId] = useState<number | ''>('')
   const [handlesCash, setHandlesCash] = useState(false)
@@ -177,9 +181,13 @@ function NewUserForm({ branches, onCreated }: { branches: Branch[]; onCreated: (
         branch: branchId,
         role,
         capabilities: { handles_cash: handlesCash, can_authorize_exceptions: canAuthorizeExceptions },
+        username,
+        date_of_birth: dateOfBirth,
       })
       setEmail('')
       setPassword('')
+      setUsername('')
+      setDateOfBirth('')
       setHandlesCash(false)
       setCanAuthorizeExceptions(false)
       setCreatedNotice(true)
@@ -207,6 +215,25 @@ function NewUserForm({ branches, onCreated }: { branches: Branch[]; onCreated: (
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+          />
+        </div>
+        <div>
+          <Label htmlFor="new-user-username">{t.users.username}</Label>
+          <Input
+            id="new-user-username"
+            required
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+          />
+        </div>
+        <div>
+          <Label htmlFor="new-user-date-of-birth">{t.users.dateOfBirth}</Label>
+          <Input
+            id="new-user-date-of-birth"
+            type="date"
+            required
+            value={dateOfBirth}
+            onChange={(e) => setDateOfBirth(e.target.value)}
           />
         </div>
         <div>
