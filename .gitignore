@@ -1,1 +1,18 @@
 .DS_Store
+
+# Backend (Python/Django)
+pos-backend/venv/
+pos-backend/.env
+pos-backend/media/
+pos-backend/staticfiles/
+**/__pycache__/
+*.pyc
+*.pyo
+
+# Frontend (Node/Vite)
+pos-frontend/node_modules/
+pos-frontend/dist/
+pos-frontend/coverage/
+
+# Docker Compose override (variables locales, nunca commitear)
+.env
